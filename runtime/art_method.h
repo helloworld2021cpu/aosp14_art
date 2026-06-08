@@ -41,6 +41,14 @@
 
 namespace art {
 
+
+extern "C" void MyWrite(unsigned char *pdata, int nlen, const char *pflag, int tid);
+extern "C" pid_t gettid(void);
+extern "C" void DumpHex(const void *vdata, size_t size, int tid);
+extern "C" bool bTrace;
+extern "C" void TestArg(ArtMethod* m, uint32_t* args);
+extern "C" void TestJniArg(ArtMethod *method, Thread *self, void *sp);
+
 class CodeItemDataAccessor;
 class CodeItemDebugInfoAccessor;
 class CodeItemInstructionAccessor;
@@ -93,11 +101,17 @@ class ArtMethod final {
   // constexpr, and ensure that the value is correct in art_method.cc.
   static constexpr uint32_t kRuntimeMethodDexMethodIndex = 0xFFFFFFFF;
 
-  ArtMethod() : access_flags_(0), dex_method_index_(0),
-      method_index_(0), hotness_count_(0) { }
+  void DefaultInitMonitor() REQUIRES_SHARED(Locks::mutator_lock_);
+
+  ArtMethod()
+      : access_flags_(0), dex_method_index_(0),
+      method_index_(0), hotness_count_(0) {
+      DefaultInitMonitor();
+  }
 
   ArtMethod(ArtMethod* src, PointerSize image_pointer_size) {
     CopyFrom(src, image_pointer_size);
+    DefaultInitMonitor();
   }
 
   static ArtMethod* FromReflectedMethod(const ScopedObjectAccessAlreadyRunnable& soa,
@@ -1060,6 +1074,72 @@ class ArtMethod final {
   GcRoot<mirror::Class>& DeclaringClassRoot() {
     return declaring_class_;
   }
+  
+  static constexpr MemberOffset IsMonitorInitializedOffset(PointerSize pointer_size) {
+    return MemberOffset(PtrSizedFieldsOffset(pointer_size) + OFFSETOF_MEMBER(
+        PtrSizedFields, is_mointor_initialized_) / sizeof(void*)
+            * static_cast<size_t>(pointer_size));
+  }
+  
+  ALWAYS_INLINE
+  const void* GetIsMonitorInitializedPtrSize(PointerSize pointer_size) const {
+    return GetNativePointer<const void*>(
+        IsMonitorInitializedOffset(pointer_size), pointer_size);
+  }
+  
+  ALWAYS_INLINE
+  const void* GetIsMonitorInitialized() const {
+    return GetIsMonitorInitializedPtrSize(kRuntimePointerSize);
+  }
+  
+  ALWAYS_INLINE
+  void SetIsMonitorInitializedPtrSize(
+      const void* is_mointor_initialized, PointerSize pointer_size)
+      REQUIRES_SHARED(Locks::mutator_lock_) {
+    SetNativePointer(IsMonitorInitializedOffset(pointer_size),
+                     is_mointor_initialized,
+                     pointer_size);
+  }
+  
+  ALWAYS_INLINE
+  void SetIsMonitorInitialized(const void* is_mointor_initialized)
+      REQUIRES_SHARED(Locks::mutator_lock_) {
+    SetIsMonitorInitializedPtrSize(is_mointor_initialized,
+                                   kRuntimePointerSize);
+  }
+  
+  static constexpr MemberOffset IsMonitorEnabledOffset(PointerSize pointer_size) {
+    return MemberOffset(PtrSizedFieldsOffset(pointer_size) + OFFSETOF_MEMBER(
+        PtrSizedFields, is_monitor_enabled_) / sizeof(void*)
+            * static_cast<size_t>(pointer_size));
+  }
+  
+  ALWAYS_INLINE
+  const void* GetIsMonitorEnabledPtrSize(PointerSize pointer_size) const {
+    return GetNativePointer<const void*>(
+        IsMonitorEnabledOffset(pointer_size), pointer_size);
+  }
+  
+  ALWAYS_INLINE
+  const void* GetIsMonitorEnabled() const {
+    return GetIsMonitorEnabledPtrSize(kRuntimePointerSize);
+  }
+  
+  ALWAYS_INLINE
+  void SetIsMonitorEnabledPtrSize(
+      const void* is_monitor_enabled, PointerSize pointer_size)
+      REQUIRES_SHARED(Locks::mutator_lock_) {
+    SetNativePointer(IsMonitorEnabledOffset(pointer_size),
+                     is_monitor_enabled,
+                     pointer_size);
+  }
+  
+  ALWAYS_INLINE
+  void SetIsMonitorEnabled(const void* is_monitor_enabled)
+      REQUIRES_SHARED(Locks::mutator_lock_) {
+    SetIsMonitorEnabledPtrSize(is_monitor_enabled,
+                               kRuntimePointerSize);
+  }
 
  protected:
   // Field order required by test "ValidateFieldOrderOfJavaCppUnionClasses".
@@ -1111,6 +1191,9 @@ class ArtMethod final {
     // Method dispatch from quick compiled code invokes this pointer which may cause bridging into
     // the interpreter.
     void* entry_point_from_quick_compiled_code_;
+    
+    const void* is_mointor_initialized_;
+    const void* is_monitor_enabled_;
   } ptr_sized_fields_;
 
  private:
@@ -1194,6 +1277,8 @@ class MethodCallback {
                                     /*out*/void** new_implementation)
       REQUIRES_SHARED(Locks::mutator_lock_) = 0;
 };
+
+extern "C" bool IsNeedTrace(ArtMethod *method);
 
 }  // namespace art
 

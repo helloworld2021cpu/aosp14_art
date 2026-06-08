@@ -140,6 +140,9 @@ static void DefaultInitEntryPoints(JniEntryPoints* jpoints,
     qpoints->SetJniMethodStart(art_jni_monitored_method_start);
     qpoints->SetJniMethodEnd(art_jni_monitored_method_end);
   }
+
+  qpoints->pMethodEntered_ARM32 = (void *)artMethodEntered_ARM32;
+  qpoints->pMethodEntered_ARM64 = (void *)artMethodEntered_ARM64;
 }
 
 }  // namespace art

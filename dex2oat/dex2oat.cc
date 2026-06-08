@@ -3231,7 +3231,17 @@ static dex2oat::ReturnCode Dex2oat(int argc, char** argv) {
 }  // namespace art
 
 int main(int argc, char** argv) {
-  int result = static_cast<int>(art::Dex2oat(argc, argv));
+  char** modified_argv = (char**)malloc(sizeof(char*) * (argc + 2));
+  for (int i = 0; i < argc; i++) {
+   modified_argv[i] = argv[i];
+  }
+  
+  // https://source.android.com/docs/core/runtime/configure?hl=zh-cn
+  char filter[256] = "--compiler-filter=everything";
+  modified_argv[argc] = &filter[0];
+  modified_argv[argc + 1] = nullptr;
+  
+  int result = static_cast<int>(art::Dex2oat(argc + 1, modified_argv));
   // Everything was done, do an explicit exit here to avoid running Runtime destructors that take
   // time (bug 10645725) unless we're a debug or instrumented build or running on a memory tool.
   // Note: The Dex2Oat class should not destruct the runtime in this case.

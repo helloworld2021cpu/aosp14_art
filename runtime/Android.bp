@@ -338,7 +338,24 @@ libart_cc_defaults {
         "entrypoints/quick/quick_thread_entrypoints.cc",
         "entrypoints/quick/quick_throw_entrypoints.cc",
         "entrypoints/quick/quick_trampoline_entrypoints.cc",
+        "compiler/jni/quick/calling_convention.cc",
     ],
+
+    codegen: {
+        arm: {
+            srcs: [
+                "compiler/jni/quick/arm/calling_convention_arm.cc",
+                "compiler/utils/arm/constants_arm.cc",
+                "compiler/utils/arm/managed_register_arm.cc",
+            ],
+        },
+        arm64: {
+            srcs: [
+                "compiler/jni/quick/arm64/calling_convention_arm64.cc",
+                "compiler/utils/arm64/managed_register_arm64.cc",
+            ],
+        },
+    },
 
     arch: {
         arm: {

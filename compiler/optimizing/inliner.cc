@@ -134,6 +134,7 @@ void HInliner::UpdateInliningBudget() {
 }
 
 bool HInliner::Run() {
+  /*
   if (codegen_->GetCompilerOptions().GetInlineMaxCodeUnits() == 0) {
     // Inlining effectively disabled.
     return false;
@@ -186,7 +187,7 @@ bool HInliner::Run() {
         if (honor_noinline_directives) {
           // Debugging case: directives in method names control or assert on inlining.
           std::string callee_name =
-              call->GetMethodReference().PrettyMethod(/* with_signature= */ false);
+              call->GetMethodReference().PrettyMethod(false);
           // Tests prevent inlining by having $noinline$ in their method names.
           if (callee_name.find("$noinline$") == std::string::npos) {
             if (TryInline(call)) {
@@ -211,6 +212,9 @@ bool HInliner::Run() {
   // We return true if we either inlined at least one method, or we marked one of our methods as
   // always throwing.
   return did_inline || graph_->HasAlwaysThrowingInvokes();
+  */
+
+  return false;
 }
 
 static bool IsMethodOrDeclaringClassFinal(ArtMethod* method)

@@ -489,13 +489,14 @@ void CodeGenerator::InitializeCodeGeneration(size_t number_of_spill_slots,
       && IsLeafMethod()
       && !RequiresCurrentMethod()) {
     DCHECK_EQ(maximum_safepoint_spill_size, 0u);
-    SetFrameSize(CallPushesPC() ? GetWordSize() : 0);
+    SetFrameSize(CallPushesPC() ? GetWordSize() + kStackAlignment: kStackAlignment);
   } else {
     SetFrameSize(RoundUp(
         first_register_slot_in_slow_path_
         + maximum_safepoint_spill_size
         + (GetGraph()->HasShouldDeoptimizeFlag() ? kShouldDeoptimizeFlagSize : 0)
-        + FrameEntrySpillSize(),
+        + FrameEntrySpillSize()
+        + kStackAlignment,
         kStackAlignment));
   }
 }

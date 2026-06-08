@@ -1274,6 +1274,80 @@ void CodeGeneratorARM64::MaybeIncrementHotness(bool is_frame_entry) {
 }
 
 void CodeGeneratorARM64::GenerateFrameEntry() {
+    if (!GetGraph()->IsCompilingOsr()) {
+	  __ Sub(sp,  sp,  Operand(496));
+	  __ Stp(x0,  x1,  MemOperand(sp, 0x0000));
+	  __ Stp(x2,  x3,  MemOperand(sp, 0x0010));
+	  __ Stp(x4,  x5,  MemOperand(sp, 0x0020));
+	  __ Stp(x6,  x7,  MemOperand(sp, 0x0030));
+	  __ Stp(x8,  x9,  MemOperand(sp, 0x0040));
+	  __ Stp(x10, x11, MemOperand(sp, 0x0050));
+	  __ Stp(x12, x13, MemOperand(sp, 0x0060));
+	  __ Stp(x14, x15, MemOperand(sp, 0x0070));
+	  __ Stp(x17, x18, MemOperand(sp, 0x0080));
+	  __ Stp(x19, x20, MemOperand(sp, 0x0090));
+	  __ Stp(x21, x22, MemOperand(sp, 0x00A0));
+	  __ Stp(x23, x24, MemOperand(sp, 0x00B0));
+	  __ Stp(x25, x26, MemOperand(sp, 0x00C0));
+	  __ Stp(x27, x28, MemOperand(sp, 0x00D0));
+	  __ Stp(x29, x30, MemOperand(sp, 0x00E0));
+	  __ Stp(d0,  d1,  MemOperand(sp, 0x00F0));
+	  __ Stp(d2,  d3,  MemOperand(sp, 0x0100));
+	  __ Stp(d4,  d5,  MemOperand(sp, 0x0110));
+	  __ Stp(d6,  d7,  MemOperand(sp, 0x0120));
+	  __ Stp(d8,  d9,  MemOperand(sp, 0x0130));
+	  __ Stp(d10, d11, MemOperand(sp, 0x0140));
+	  __ Stp(d12, d13, MemOperand(sp, 0x0150));
+	  __ Stp(d14, d15, MemOperand(sp, 0x0160));
+	  __ Stp(d16, d17, MemOperand(sp, 0x0170));
+	  __ Stp(d18, d19, MemOperand(sp, 0x0180));
+	  __ Stp(d20, d21, MemOperand(sp, 0x0190));
+	  __ Stp(d22, d23, MemOperand(sp, 0x01A0));
+	  __ Stp(d24, d25, MemOperand(sp, 0x01B0));
+	  __ Stp(d26, d27, MemOperand(sp, 0x01C0));
+	  __ Stp(d28, d29, MemOperand(sp, 0x01D0));
+	  __ Stp(d30, d31, MemOperand(sp, 0x01E0));
+
+	  __ Mov(x1,  tr);
+	  __ Mov(x2,  sp);
+	  __ Ldr(x30, MemOperand(tr, GetThreadOffset<kArm64PointerSize>(
+		    kQuickMethodEntered_ARM64).Int32Value()));
+	  __ Blr(x30);
+
+	  __ Ldp(x0,  x1,  MemOperand(sp, 0x0000));
+	  __ Ldp(x2,  x3,  MemOperand(sp, 0x0010));
+	  __ Ldp(x4,  x5,  MemOperand(sp, 0x0020));
+	  __ Ldp(x6,  x7,  MemOperand(sp, 0x0030));
+	  __ Ldp(x8,  x9,  MemOperand(sp, 0x0040));
+	  __ Ldp(x10, x11, MemOperand(sp, 0x0050));
+	  __ Ldp(x12, x13, MemOperand(sp, 0x0060));
+	  __ Ldp(x14, x15, MemOperand(sp, 0x0070));
+	  __ Ldp(x17, x18, MemOperand(sp, 0x0080));
+	  __ Ldp(x19, x20, MemOperand(sp, 0x0090));
+	  __ Ldp(x21, x22, MemOperand(sp, 0x00A0));
+	  __ Ldp(x23, x24, MemOperand(sp, 0x00B0));
+	  __ Ldp(x25, x26, MemOperand(sp, 0x00C0));
+	  __ Ldp(x27, x28, MemOperand(sp, 0x00D0));
+	  __ Ldp(x29, x30, MemOperand(sp, 0x00E0));
+	  __ Ldp(d0,  d1,  MemOperand(sp, 0x00F0));
+	  __ Ldp(d2,  d3,  MemOperand(sp, 0x0100));
+	  __ Ldp(d4,  d5,  MemOperand(sp, 0x0110));
+	  __ Ldp(d6,  d7,  MemOperand(sp, 0x0120));
+	  __ Ldp(d8,  d9,  MemOperand(sp, 0x0130));
+	  __ Ldp(d10, d11, MemOperand(sp, 0x0140));
+	  __ Ldp(d12, d13, MemOperand(sp, 0x0150));
+	  __ Ldp(d14, d15, MemOperand(sp, 0x0160));
+	  __ Ldp(d16, d17, MemOperand(sp, 0x0170));
+	  __ Ldp(d18, d19, MemOperand(sp, 0x0180));
+	  __ Ldp(d20, d21, MemOperand(sp, 0x0190));
+	  __ Ldp(d22, d23, MemOperand(sp, 0x01A0));
+	  __ Ldp(d24, d25, MemOperand(sp, 0x01B0));
+	  __ Ldp(d26, d27, MemOperand(sp, 0x01C0));
+	  __ Ldp(d28, d29, MemOperand(sp, 0x01D0));
+	  __ Ldp(d30, d31, MemOperand(sp, 0x01E0));
+	  __ Add(sp,  sp,  Operand(496));
+  }
+  
   MacroAssembler* masm = GetVIXLAssembler();
 
   // Check if we need to generate the clinit check. We will jump to the

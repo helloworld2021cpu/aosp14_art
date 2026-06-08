@@ -1931,6 +1931,9 @@ void BuildGenericJniFrameVisitor::Visit() {
   }
 }
 
+extern void artMethodEntered_JNI(ArtMethod* method, Thread* self, ArtMethod* caller, void* sp)
+    REQUIRES_SHARED(Locks::mutator_lock_);
+
 /*
  * Initializes the reserved area assumed to be directly below `managed_sp` for a native call:
  *
@@ -2053,6 +2056,11 @@ extern "C" const void* artQuickGenericJniTrampoline(Thread* self,
                         << called->PrettyMethod()
                         << " -> "
                         << std::hex << reinterpret_cast<uintptr_t>(nativeCode);
+
+  // /art/runtime/arch/arm/quick_entrypoints_arm.S#1578
+  // /art/runtime/arch/arm64/quick_entrypoints_arm64.S#1866
+  ArtMethod* caller = BuildGenericJniFrameVisitor::GetCallingMethod(managed_sp);
+  artMethodEntered_JNI(called, self, caller, managed_sp);
 
   // Return native code.
   return nativeCode;

@@ -446,6 +446,9 @@ ArtMethod* FindVirtualMethod(ObjPtr<mirror::Object> receiver, ArtMethod* method)
   return receiver->GetClass()->FindVirtualMethodForVirtualOrInterface(method, kRuntimePointerSize);
 }
 
+pid_t gettid2(void) {
+  return syscall(SYS_gettid);
+}
 
 void InvokeWithArgArray(const ScopedObjectAccessAlreadyRunnable& soa,
                                ArtMethod* method, ArgArray* arg_array, JValue* result,
@@ -455,7 +458,19 @@ void InvokeWithArgArray(const ScopedObjectAccessAlreadyRunnable& soa,
   if (UNLIKELY(soa.Env()->IsCheckJniEnabled())) {
     CheckMethodArguments(soa.Vm(), method->GetInterfaceMethodIfProxy(kRuntimePointerSize), args);
   }
+
+  std::string output;
+  output = method->PrettyMethod(true);
+
+  if (bTrace) {
+    MyWrite((unsigned char*)output.c_str(), output.size(), "[R+]:", gettid2());
+    TestArg(method, arg_array->GetArray());
+  }
   method->Invoke(soa.Self(), args, arg_array->GetNumBytes(), result, shorty);
+  if (bTrace) {
+    MyWrite((unsigned char*)output.c_str(), output.size(), "[R-]:", gettid2());
+  }
+  
 }
 
 ALWAYS_INLINE

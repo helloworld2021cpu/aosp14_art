@@ -65,6 +65,8 @@
 #include "scoped_thread_state_change-inl.h"
 #include "thread.h"
 #include "well_known_classes-inl.h"
+#include "android-base/stringprintf.h"
+using android::base::StringPrintf;
 
 namespace art {
 
@@ -1008,7 +1010,41 @@ class JNI {
     return FindMethodID<kEnableIndexIds>(soa, java_class, name, sig, true);
   }
 
+static pid_t gettid3(void) {
+  return syscall(SYS_gettid);
+}
+    
+#if defined(__arm__)
+#define TESTFUNC  \
+if (bTrace) { \
+void* lr_value = 0; \
+__asm__( \
+"mov %0, lr\n" \
+:"=r"(lr_value) \
+); \
+std::string output; \
+output = StringPrintf("%p ", lr_value); \
+MyWrite((unsigned char*)output.c_str(), output.size(), "[R+]:", gettid3()); \
+} 
+#elif defined(__aarch64__)
+#define TESTFUNC \
+if (bTrace) { \
+void* lr_value = 0;\
+__asm__(\
+"mov %0, X30\n"\
+:"=r"(lr_value)\
+);\
+std::string output;\
+output = StringPrintf("%p ", lr_value);\
+MyWrite((unsigned char*)output.c_str(), output.size(), "[R+]:", gettid3());  \
+}
+#else
+#define TESTFUNC
+#endif 
+
   static jobject CallObjectMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1020,6 +1056,8 @@ class JNI {
   }
 
   static jobject CallObjectMethodV(JNIEnv* env, jobject obj, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT(obj);
     CHECK_NON_NULL_ARGUMENT(mid);
     ScopedObjectAccess soa(env);
@@ -1028,6 +1066,8 @@ class JNI {
   }
 
   static jobject CallObjectMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT(obj);
     CHECK_NON_NULL_ARGUMENT(mid);
     ScopedObjectAccess soa(env);
@@ -1036,6 +1076,8 @@ class JNI {
   }
 
   static jboolean CallBooleanMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1047,6 +1089,8 @@ class JNI {
   }
 
   static jboolean CallBooleanMethodV(JNIEnv* env, jobject obj, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1054,6 +1098,8 @@ class JNI {
   }
 
   static jboolean CallBooleanMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1061,6 +1107,8 @@ class JNI {
   }
 
   static jbyte CallByteMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1072,13 +1120,17 @@ class JNI {
   }
 
   static jbyte CallByteMethodV(JNIEnv* env, jobject obj, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeVirtualOrInterfaceWithVarArgs(soa, obj, mid, args).GetB();
   }
 
-  static jbyte CallByteMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) {
+  static jbyte CallByteMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) { 
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1086,6 +1138,8 @@ class JNI {
   }
 
   static jchar CallCharMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1097,6 +1151,8 @@ class JNI {
   }
 
   static jchar CallCharMethodV(JNIEnv* env, jobject obj, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1104,6 +1160,8 @@ class JNI {
   }
 
   static jchar CallCharMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1111,6 +1169,8 @@ class JNI {
   }
 
   static jdouble CallDoubleMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
+    TESTFUNC 
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1122,6 +1182,8 @@ class JNI {
   }
 
   static jdouble CallDoubleMethodV(JNIEnv* env, jobject obj, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1129,6 +1191,8 @@ class JNI {
   }
 
   static jdouble CallDoubleMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1136,6 +1200,8 @@ class JNI {
   }
 
   static jfloat CallFloatMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1147,6 +1213,8 @@ class JNI {
   }
 
   static jfloat CallFloatMethodV(JNIEnv* env, jobject obj, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1154,6 +1222,8 @@ class JNI {
   }
 
   static jfloat CallFloatMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1161,6 +1231,8 @@ class JNI {
   }
 
   static jint CallIntMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1172,6 +1244,8 @@ class JNI {
   }
 
   static jint CallIntMethodV(JNIEnv* env, jobject obj, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1179,6 +1253,8 @@ class JNI {
   }
 
   static jint CallIntMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1186,6 +1262,8 @@ class JNI {
   }
 
   static jlong CallLongMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1197,6 +1275,8 @@ class JNI {
   }
 
   static jlong CallLongMethodV(JNIEnv* env, jobject obj, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1204,6 +1284,8 @@ class JNI {
   }
 
   static jlong CallLongMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1211,6 +1293,8 @@ class JNI {
   }
 
   static jshort CallShortMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1222,6 +1306,8 @@ class JNI {
   }
 
   static jshort CallShortMethodV(JNIEnv* env, jobject obj, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1229,6 +1315,8 @@ class JNI {
   }
 
   static jshort CallShortMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1236,6 +1324,8 @@ class JNI {
   }
 
   static void CallVoidMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1246,6 +1336,8 @@ class JNI {
   }
 
   static void CallVoidMethodV(JNIEnv* env, jobject obj, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(mid);
     ScopedObjectAccess soa(env);
@@ -1253,6 +1345,8 @@ class JNI {
   }
 
   static void CallVoidMethodA(JNIEnv* env, jobject obj, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(mid);
     ScopedObjectAccess soa(env);
@@ -1260,6 +1354,8 @@ class JNI {
   }
 
   static jobject CallNonvirtualObjectMethod(JNIEnv* env, jobject obj, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1272,6 +1368,8 @@ class JNI {
 
   static jobject CallNonvirtualObjectMethodV(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                              va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT(obj);
     CHECK_NON_NULL_ARGUMENT(mid);
     ScopedObjectAccess soa(env);
@@ -1281,6 +1379,9 @@ class JNI {
 
   static jobject CallNonvirtualObjectMethodA(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                              const jvalue* args) {
+
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT(obj);
     CHECK_NON_NULL_ARGUMENT(mid);
     ScopedObjectAccess soa(env);
@@ -1290,6 +1391,9 @@ class JNI {
 
   static jboolean CallNonvirtualBooleanMethod(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                               ...) {
+
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1302,6 +1406,9 @@ class JNI {
 
   static jboolean CallNonvirtualBooleanMethodV(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                                va_list args) {
+
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1310,6 +1417,9 @@ class JNI {
 
   static jboolean CallNonvirtualBooleanMethodA(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                                const jvalue* args) {
+
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1317,6 +1427,8 @@ class JNI {
   }
 
   static jbyte CallNonvirtualByteMethod(JNIEnv* env, jobject obj, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1329,6 +1441,8 @@ class JNI {
 
   static jbyte CallNonvirtualByteMethodV(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                          va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1337,6 +1451,8 @@ class JNI {
 
   static jbyte CallNonvirtualByteMethodA(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                          const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1344,6 +1460,8 @@ class JNI {
   }
 
   static jchar CallNonvirtualCharMethod(JNIEnv* env, jobject obj, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1356,6 +1474,8 @@ class JNI {
 
   static jchar CallNonvirtualCharMethodV(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                          va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1364,6 +1484,8 @@ class JNI {
 
   static jchar CallNonvirtualCharMethodA(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                          const jvalue* args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1371,6 +1493,8 @@ class JNI {
   }
 
   static jshort CallNonvirtualShortMethod(JNIEnv* env, jobject obj, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1383,6 +1507,8 @@ class JNI {
 
   static jshort CallNonvirtualShortMethodV(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                            va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1391,6 +1517,8 @@ class JNI {
 
   static jshort CallNonvirtualShortMethodA(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                            const jvalue* args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1398,6 +1526,8 @@ class JNI {
   }
 
   static jint CallNonvirtualIntMethod(JNIEnv* env, jobject obj, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1410,6 +1540,8 @@ class JNI {
 
   static jint CallNonvirtualIntMethodV(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                        va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1418,6 +1550,8 @@ class JNI {
 
   static jint CallNonvirtualIntMethodA(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                        const jvalue* args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1425,6 +1559,8 @@ class JNI {
   }
 
   static jlong CallNonvirtualLongMethod(JNIEnv* env, jobject obj, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1437,6 +1573,8 @@ class JNI {
 
   static jlong CallNonvirtualLongMethodV(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                          va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1445,6 +1583,8 @@ class JNI {
 
   static jlong CallNonvirtualLongMethodA(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                          const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1452,6 +1592,8 @@ class JNI {
   }
 
   static jfloat CallNonvirtualFloatMethod(JNIEnv* env, jobject obj, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1464,6 +1606,8 @@ class JNI {
 
   static jfloat CallNonvirtualFloatMethodV(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                            va_list args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1472,6 +1616,8 @@ class JNI {
 
   static jfloat CallNonvirtualFloatMethodA(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                            const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1479,6 +1625,8 @@ class JNI {
   }
 
   static jdouble CallNonvirtualDoubleMethod(JNIEnv* env, jobject obj, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1491,6 +1639,8 @@ class JNI {
 
   static jdouble CallNonvirtualDoubleMethodV(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                              va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1499,6 +1649,9 @@ class JNI {
 
   static jdouble CallNonvirtualDoubleMethodA(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                              const jvalue* args) {
+
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
@@ -1506,6 +1659,8 @@ class JNI {
   }
 
   static void CallNonvirtualVoidMethod(JNIEnv* env, jobject obj, jclass, jmethodID mid, ...) {
+    TESTFUNC 
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1517,6 +1672,8 @@ class JNI {
 
   static void CallNonvirtualVoidMethodV(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                         va_list args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(mid);
     ScopedObjectAccess soa(env);
@@ -1525,6 +1682,8 @@ class JNI {
 
   static void CallNonvirtualVoidMethodA(JNIEnv* env, jobject obj, jclass, jmethodID mid,
                                         const jvalue* args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(obj);
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(mid);
     ScopedObjectAccess soa(env);
@@ -1747,6 +1906,8 @@ class JNI {
   }
 
   static jobject CallStaticObjectMethod(JNIEnv* env, jclass, jmethodID mid, ...) {
+    TESTFUNC 
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1757,6 +1918,8 @@ class JNI {
   }
 
   static jobject CallStaticObjectMethodV(JNIEnv* env, jclass, jmethodID mid, va_list args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT(mid);
     ScopedObjectAccess soa(env);
     JValue result(InvokeWithVarArgs(soa, nullptr, mid, args));
@@ -1764,6 +1927,8 @@ class JNI {
   }
 
   static jobject CallStaticObjectMethodA(JNIEnv* env, jclass, jmethodID mid, const jvalue* args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT(mid);
     ScopedObjectAccess soa(env);
     JValue result(InvokeWithJValues(soa, nullptr, mid, args));
@@ -1771,6 +1936,8 @@ class JNI {
   }
 
   static jboolean CallStaticBooleanMethod(JNIEnv* env, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1781,18 +1948,24 @@ class JNI {
   }
 
   static jboolean CallStaticBooleanMethodV(JNIEnv* env, jclass, jmethodID mid, va_list args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithVarArgs(soa, nullptr, mid, args).GetZ();
   }
 
   static jboolean CallStaticBooleanMethodA(JNIEnv* env, jclass, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithJValues(soa, nullptr, mid, args).GetZ();
   }
 
   static jbyte CallStaticByteMethod(JNIEnv* env, jclass, jmethodID mid, ...) {
+    TESTFUNC 
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1803,18 +1976,24 @@ class JNI {
   }
 
   static jbyte CallStaticByteMethodV(JNIEnv* env, jclass, jmethodID mid, va_list args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithVarArgs(soa, nullptr, mid, args).GetB();
   }
 
   static jbyte CallStaticByteMethodA(JNIEnv* env, jclass, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithJValues(soa, nullptr, mid, args).GetB();
   }
 
   static jchar CallStaticCharMethod(JNIEnv* env, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1825,18 +2004,24 @@ class JNI {
   }
 
   static jchar CallStaticCharMethodV(JNIEnv* env, jclass, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithVarArgs(soa, nullptr, mid, args).GetC();
   }
 
   static jchar CallStaticCharMethodA(JNIEnv* env, jclass, jmethodID mid, const jvalue* args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithJValues(soa, nullptr, mid, args).GetC();
   }
 
   static jshort CallStaticShortMethod(JNIEnv* env, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1847,18 +2032,24 @@ class JNI {
   }
 
   static jshort CallStaticShortMethodV(JNIEnv* env, jclass, jmethodID mid, va_list args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithVarArgs(soa, nullptr, mid, args).GetS();
   }
 
   static jshort CallStaticShortMethodA(JNIEnv* env, jclass, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithJValues(soa, nullptr, mid, args).GetS();
   }
 
   static jint CallStaticIntMethod(JNIEnv* env, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1869,18 +2060,23 @@ class JNI {
   }
 
   static jint CallStaticIntMethodV(JNIEnv* env, jclass, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithVarArgs(soa, nullptr, mid, args).GetI();
   }
 
   static jint CallStaticIntMethodA(JNIEnv* env, jclass, jmethodID mid, const jvalue* args) {
+    TESTFUNC
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithJValues(soa, nullptr, mid, args).GetI();
   }
 
   static jlong CallStaticLongMethod(JNIEnv* env, jclass, jmethodID mid, ...) {
+    TESTFUNC 
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1891,18 +2087,24 @@ class JNI {
   }
 
   static jlong CallStaticLongMethodV(JNIEnv* env, jclass, jmethodID mid, va_list args) {
+    TESTFUNC 
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithVarArgs(soa, nullptr, mid, args).GetJ();
   }
 
   static jlong CallStaticLongMethodA(JNIEnv* env, jclass, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithJValues(soa, nullptr, mid, args).GetJ();
   }
 
   static jfloat CallStaticFloatMethod(JNIEnv* env, jclass, jmethodID mid, ...) {
+    TESTFUNC 
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1913,18 +2115,24 @@ class JNI {
   }
 
   static jfloat CallStaticFloatMethodV(JNIEnv* env, jclass, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithVarArgs(soa, nullptr, mid, args).GetF();
   }
 
   static jfloat CallStaticFloatMethodA(JNIEnv* env, jclass, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithJValues(soa, nullptr, mid, args).GetF();
   }
 
   static jdouble CallStaticDoubleMethod(JNIEnv* env, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1935,12 +2143,16 @@ class JNI {
   }
 
   static jdouble CallStaticDoubleMethodV(JNIEnv* env, jclass, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithVarArgs(soa, nullptr, mid, args).GetD();
   }
 
   static jdouble CallStaticDoubleMethodA(JNIEnv* env, jclass, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_ZERO(mid);
     ScopedObjectAccess soa(env);
     return InvokeWithJValues(soa, nullptr, mid, args).GetD();
@@ -1948,6 +2160,8 @@ class JNI {
 
   NO_STACK_PROTECTOR
   static void CallStaticVoidMethod(JNIEnv* env, jclass, jmethodID mid, ...) {
+    TESTFUNC
+
     va_list ap;
     va_start(ap, mid);
     ScopedVAArgs free_args_later(&ap);
@@ -1958,12 +2172,16 @@ class JNI {
 
   NO_STACK_PROTECTOR
   static void CallStaticVoidMethodV(JNIEnv* env, jclass, jmethodID mid, va_list args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(mid);
     ScopedObjectAccess soa(env);
     InvokeWithVarArgs(soa, nullptr, mid, args);
   }
 
   static void CallStaticVoidMethodA(JNIEnv* env, jclass, jmethodID mid, const jvalue* args) {
+    TESTFUNC
+
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(mid);
     ScopedObjectAccess soa(env);
     InvokeWithJValues(soa, nullptr, mid, args);
@@ -2590,6 +2808,12 @@ class JNI {
         ReportInvalidJNINativeMethod(soa, c.Get(), "native function", i);
         return JNI_ERR;
       }
+
+      std::string output;\
+      output = StringPrintf("RegisterNatives name:%p sig:%p pfn:%p %s %s", methods[i].name, \
+        methods[i].signature, methods[i].fnPtr, methods[i].name, methods[i].signature);
+      MyWrite((unsigned char*)output.c_str(), output.size(), "[J+]:", gettid3());
+
       bool is_fast = false;
       // Notes about fast JNI calls:
       //

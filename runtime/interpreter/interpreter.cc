@@ -279,6 +279,7 @@ static inline JValue Execute(
         if (jit->CanInvokeCompiledCode(method)) {
           JValue result;
 
+          artMethodEntered_INTERPRETER((Thread*)(reinterpret_cast<long>(self) | 1), shadow_frame);
           // Pop the shadow frame before calling into compiled code.
           self->PopShadowFrame();
           // Calculate the offset of the first input reg. The input registers are in the high regs.
@@ -288,7 +289,6 @@ static inline JValue Execute(
           ArtInterpreterToCompiledCodeBridge(self, nullptr, &shadow_frame, arg_offset, &result);
           // Push the shadow frame back as the caller will expect it.
           self->PushShadowFrame(&shadow_frame);
-
           return result;
         }
       }

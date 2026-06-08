@@ -34,6 +34,7 @@
 #include "dex_file.h"
 #include "dex_file_verifier.h"
 #include "standard_dex_file.h"
+#include <fcntl.h>
 
 namespace art {
 
@@ -401,6 +402,50 @@ std::unique_ptr<DexFile> DexFileLoader::OpenCommon(std::shared_ptr<DexFileContai
   return dex_file;
 }
 
+std::string g_pagname = "com.xxx";
+
+void dumpFileName(char *name, int len, const char *pname, int dexlen) {
+    time_t now;
+    struct tm *timenow;
+    time(&now);
+    timenow = localtime(&now);
+    memset(name, 0, len);
+    sprintf(name, "/data/data/%s/xx/dump_size_%s_time_%d_%d_%d_%d_%d_%d.dex", g_pagname.c_str(), pname, dexlen,
+            timenow->tm_year + 1900,
+            timenow->tm_mon + 1,
+            timenow->tm_mday,
+            timenow->tm_hour,
+            timenow->tm_min);
+}
+
+
+void writeToFile(const char *pname, u_int8_t *data, size_t length) {
+    char dname[1024];
+    dumpFileName(dname, sizeof(dname), pname, length);
+    LOG(WARNING) << "INJECT dump dex file name is : " << dname << std::endl;
+    LOG(WARNING) << "INJECT start dump" << std::endl;
+    int dex = open(dname, O_CREAT | O_WRONLY, 0644);
+    if (dex < 0) {
+        LOG(WARNING) << "INJECT open or create file error" << std::endl;;
+        return;
+    }
+    int ret = write(dex, data, length);
+    if (ret < 0) {
+        LOG(WARNING) << "INJECT write file error" << std::endl;
+    } else {
+        LOG(WARNING) << "INJECT dump dex file success" << dname << std::endl;;
+    }
+    close(dex);
+}
+
+
+void DumpDex(long base, long size, long location)
+{
+    char buf[256] = {0};
+    sprintf(buf, "%lx", location);
+    writeToFile(buf, reinterpret_cast<u_int8_t *>(base), size);
+}
+
 bool DexFileLoader::OpenFromZipEntry(const ZipArchive& zip_archive,
                                      const char* entry_name,
                                      const std::string& location,
@@ -530,7 +575,7 @@ std::unique_ptr<DexFile> DexFileLoader::OpenCommon(const uint8_t* base,
   auto new_container = std::make_shared<NewContainer>(base, size);
   new_container->old_container_ = std::move(old_container);
 
-  return OpenCommon(std::move(new_container),
+  std::unique_ptr<DexFile>  dex_file = OpenCommon(std::move(new_container),
                     base,
                     size,
                     location,
@@ -540,6 +585,8 @@ std::unique_ptr<DexFile> DexFileLoader::OpenCommon(const uint8_t* base,
                     verify_checksum,
                     error_msg,
                     /*error_code=*/nullptr);
+  DumpDex((long)dex_file->Begin(), dex_file->Size(), (long)location.c_str());
+  return dex_file;
 }
 
 }  // namespace art

@@ -476,8 +476,7 @@ static void CompileMethodQuick(
     if ((access_flags & kAccNative) != 0) {
       // Are we extracting only and have support for generic JNI down calls?
       const CompilerOptions& compiler_options = driver->GetCompilerOptions();
-      if (!compiler_options.IsJniCompilationEnabled() &&
-          InstructionSetHasGenericJniStub(compiler_options.GetInstructionSet())) {
+      if (InstructionSetHasGenericJniStub(compiler_options.GetInstructionSet())) {
         // Leaving this empty will trigger the generic JNI version
       } else {
         // Query any JNI optimization annotations such as @FastNative or @CriticalNative.

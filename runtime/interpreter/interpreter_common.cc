@@ -275,6 +275,40 @@ void ArtInterpreterToCompiledCodeBridge(Thread* self,
   if (jit != nullptr && caller != nullptr) {
     jit->NotifyInterpreterToCompiledCodeTransition(self, caller);
   }
+
+  /*
+  std::string output;
+  if (caller != nullptr) {
+    output = caller->PrettyMethod(true) + " ==> ";
+  }
+
+  output += method->PrettyMethod(true);
+  MyWrite((unsigned char*)output.c_str(), output.size(), "[M]:", gettid());
+  */
+
+  artMethodEntered_INTERPRETER((Thread*)1, *shadow_frame);
+
+  #if defined(__aarch64__)
+
+  *(uint64_t*)result = (uint64_t)caller;
+  /*
+  __asm__(\
+    "mov %0, sp\n"\
+    :"=r"(sp_value)\
+  );\
+  sp_value = sp_value - 0x90;
+  */
+
+  /*
+  char buf[0x20] = {0};
+  sprintf(buf, "caller=%p ", caller);
+  MyWrite((unsigned char*)buf, strlen(buf), "[M]:", gettid());
+
+  MyWrite((unsigned char*)caller, 0x60, "[M]:", gettid());
+  */
+  
+  #endif
+
   method->Invoke(self, shadow_frame->GetVRegArgs(arg_offset),
                  (shadow_frame->NumberOfVRegs() - arg_offset) * sizeof(uint32_t),
                  result, method->GetInterfaceMethodIfProxy(kRuntimePointerSize)->GetShorty());

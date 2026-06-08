@@ -32,6 +32,7 @@ bool IsNterpSupported() {
 }
 
 bool CanRuntimeUseNterp() REQUIRES_SHARED(Locks::mutator_lock_) {
+  /*
   Runtime* runtime = Runtime::Current();
   instrumentation::Instrumentation* instr = runtime->GetInstrumentation();
   // If the runtime is interpreter only, we currently don't use nterp as some
@@ -45,6 +46,8 @@ bool CanRuntimeUseNterp() REQUIRES_SHARED(Locks::mutator_lock_) {
          // in an infinite loop.
          !runtime->AreAsyncExceptionsThrown() &&
          (runtime->GetJit() == nullptr || !runtime->GetJit()->JitAtFirstUse());
+  */
+  return false;
 }
 
 // The entrypoint for nterp, which ArtMethods can directly point to.

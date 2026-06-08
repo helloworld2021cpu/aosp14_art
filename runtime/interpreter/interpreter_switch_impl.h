@@ -29,6 +29,9 @@ namespace art {
 class ShadowFrame;
 class Thread;
 
+extern bool artMethodEntered_INTERPRETER(Thread* self, ShadowFrame& shadow_frame)
+    REQUIRES_SHARED(Locks::mutator_lock_);
+
 namespace interpreter {
 
 // Group all the data that is needed in the switch interpreter.
@@ -62,6 +65,7 @@ ALWAYS_INLINE JValue ExecuteSwitchImpl(Thread* self,
                                        JValue result_register,
                                        bool interpret_one_instruction)
   REQUIRES_SHARED(Locks::mutator_lock_) {
+  bool ret = art::artMethodEntered_INTERPRETER(self, shadow_frame);
   SwitchImplContext ctx {
     .self = self,
     .accessor = accessor,
@@ -72,6 +76,11 @@ ALWAYS_INLINE JValue ExecuteSwitchImpl(Thread* self,
   };
   void* impl = reinterpret_cast<void*>(&ExecuteSwitchImplCpp<transaction_active>);
   const uint16_t* dex_pc = ctx.accessor.Insns();
+
+  if (!ret) {
+    return ctx.result;
+  }
+
   ExecuteSwitchImplAsm(&ctx, impl, dex_pc);
   return ctx.result;
 }

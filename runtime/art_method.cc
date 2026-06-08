@@ -54,6 +54,16 @@
 #include "scoped_thread_state_change-inl.h"
 #include "vdex_file.h"
 
+#include "base/arena_allocator.h"
+#include "base/malloc_arena_pool.h"
+#include "compiler/jni/quick/calling_convention.h"
+#include "arch/instruction_set.h"
+#include <sys/syscall.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include "nth_caller_visitor.h"
+
 namespace art {
 
 using android::base::StringPrintf;
@@ -62,6 +72,13 @@ extern "C" void art_quick_invoke_stub(ArtMethod*, uint32_t*, uint32_t, Thread*, 
                                       const char*);
 extern "C" void art_quick_invoke_static_stub(ArtMethod*, uint32_t*, uint32_t, Thread*, JValue*,
                                              const char*);
+extern "C" void MyWrite(unsigned char *pdata, int nlen, const char *pflag, int tid);
+extern "C" pid_t gettid(void);
+extern "C" void DumpHex(const void *vdata, size_t size, int tid);
+extern "C" void TestArg(ArtMethod* m, uint32_t* args);
+extern "C" void TestJniArg(ArtMethod *method, Thread *self, void *sp);
+
+bool bTrace = false;
 
 // Enforce that we have the right index for runtime methods.
 static_assert(ArtMethod::kRuntimeMethodDexMethodIndex == dex::kDexNoIndex,
@@ -370,6 +387,13 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
     return;
   }
 
+  /*
+  std::string output;
+  output = this->PrettyMethod(true);
+  MyWrite((unsigned char*)output.c_str(), output.size(), "[T+]:", gettid());
+  */
+
+
   if (kIsDebugBuild) {
     self->AssertThreadSuspensionIsAllowable();
     CHECK_EQ(ThreadState::kRunnable, self->GetState());
@@ -418,6 +442,7 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
         CHECK(oat_quick_code == nullptr || oat_quick_code != GetEntryPointFromQuickCompiledCode())
             << "Don't call compiled code when -Xint " << PrettyMethod();
       }
+
 
       if (!IsStatic()) {
         (*art_quick_invoke_stub)(this, args, args_size, self, result, shorty);
@@ -908,6 +933,1498 @@ ALWAYS_INLINE static inline void DoGetAccessFlagsHelper(ArtMethod* method)
   CHECK(method->IsRuntimeMethod() ||
         method->GetDeclaringClass<kReadBarrierOption>()->IsIdxLoaded() ||
         method->GetDeclaringClass<kReadBarrierOption>()->IsErroneous());
+}
+
+
+
+static std::string strPackageName("com.abi.cook.chill");
+static std::string strPath("/data/data/com.abi.cook.chill");
+
+
+static std::vector<std::string*> g_enable_methodnames;
+static std::vector<std::string*> g_disable_methodnames;
+static std::vector<std::string*> g_enable_recursion;
+size_t g_enable_recursion_num = 0;
+static std::vector<std::string*> g_enable_args;  
+static std::vector<std::string*> g_enable_stack; 
+#define OUT_LENGTH 0x7fffffff 
+
+void WriteSuc(FILE *pfile, unsigned char *pdata, int nlen)
+{
+  int tmp_count = 0;
+  int max_len = 512;
+  int all_count = 0;
+  int tmp_len = nlen;
+  while (tmp_len != 0)
+  {
+    if (tmp_len <= max_len) {
+      tmp_count = fwrite(pdata + all_count, tmp_len, 1, pfile);
+      if (tmp_count != 1) { 
+        LOG(ERROR) << "write_suc failed " << tmp_count;
+      }
+        
+      all_count += tmp_count * tmp_len;
+      tmp_len -= tmp_count * tmp_len;
+    }
+    else {
+      tmp_count = fwrite(pdata + all_count, max_len, 1, pfile);
+      if (tmp_count != 1) {
+        LOG(ERROR) << "write_suc failed " << tmp_count;
+      }
+        
+      all_count += tmp_count * max_len;
+      tmp_len -= tmp_count * max_len;
+    }
+
+    if (tmp_count == -1) {
+      LOG(ERROR) << "write_suc failed " << tmp_count;
+    }
+  }
+}
+
+void MyWriteLocalTest(unsigned char *pdata, int nlen, const char *pflag, int tid)
+{
+  char buf[256] = {0};
+  sprintf(buf, "%s/xx/%d", strPath.c_str(), tid);
+  FILE *pfile = fopen(buf, "ab+");
+  if (pfile != NULL) {
+    WriteSuc(pfile, (unsigned char *)"\n", strlen("\n"));
+    WriteSuc(pfile, (unsigned char *)pflag, strlen(pflag));
+    if (pdata != NULL) {
+      WriteSuc(pfile, (unsigned char *)pdata, nlen);
+    }
+    fclose(pfile);
+  }
+}
+
+void MyWriteLocal(unsigned char *pdata, int nlen, const char *pflag, int tid)
+{
+  if (!bTrace) {
+    return;
+  } 
+
+  char buf[256] = {0};
+  sprintf(buf, "%s/xx/%d", strPath.c_str(), tid);
+  FILE *pfile = fopen(buf, "ab+");
+  if (pfile != NULL) {
+    WriteSuc(pfile, (unsigned char *)"\n", strlen("\n"));
+    WriteSuc(pfile, (unsigned char *)pflag, strlen(pflag));
+    if (pdata != NULL) {
+      WriteSuc(pfile, (unsigned char *)pdata, nlen);
+    }
+    fclose(pfile);
+  }
+}
+
+void MyWriteLocal_dump(unsigned char *pdata, int nlen, const char *pflag, int tid)
+{
+  char buf[256] = {0};
+  static int ncount = 0;
+  sprintf(buf, "%s/xxx/%d-%d", strPath.c_str(), tid, ncount++);
+  FILE *pfile = fopen(buf, "ab+");
+  if (pfile != NULL) {
+    if (pflag != NULL) {
+      WriteSuc(pfile, (unsigned char *)pflag, strlen(pflag));
+    }
+    
+    if (pdata != NULL) {
+      WriteSuc(pfile, (unsigned char *)pdata, nlen);
+    }
+    fclose(pfile);
+  }
+}
+
+static char _MSHexChar(uint8_t value) {
+  return value < 0x20 || value >= 0x80 ? '.' : value;
+}
+
+#define HexWidth_ 16
+#define HexDepth_ 4
+
+void PrintHexEx(const void *vdata, size_t size, size_t stride, const char *mark, int tid) {
+  const uint8_t *data((const uint8_t *)vdata);
+
+  size_t i(0), j;
+
+  char d[256];
+  size_t b(0);
+  d[0] = '\0';
+
+  while (i != size)
+  {
+    if (i % HexWidth_ == 0)
+    {
+    if (mark != NULL)
+      b += sprintf(d + b, "[%s] ", mark);
+    b += sprintf(d + b, "0x%.3zx:", i);
+    }
+
+    b += sprintf(d + b, " ");
+
+    for (size_t q(0); q != stride; ++q)
+    b += sprintf(d + b, "%.2x", data[i + stride - q - 1]);
+
+    i += stride;
+
+    for (size_t q(1); q != stride; ++q)
+    b += sprintf(d + b, " ");
+
+    if (i % HexDepth_ == 0)
+    b += sprintf(d + b, " ");
+
+    if (i % HexWidth_ == 0)
+    {
+    b += sprintf(d + b, " ");
+    for (j = i - HexWidth_; j != i; ++j)
+      b += sprintf(d + b, "%c", _MSHexChar(data[j]));
+
+    // lprintf("%s", d);
+    MyWrite((unsigned char *)d, strlen(d), "x", tid);
+    b = 0;
+    d[0] = '\0';
+    }
+  }
+
+  if (i % HexWidth_ != 0)
+  {
+    for (j = i % HexWidth_; j != HexWidth_; ++j)
+    b += sprintf(d + b, "   ");
+    for (j = 0; j != (HexWidth_ - i % HexWidth_ + HexDepth_ - 1) / HexDepth_; ++j)
+    b += sprintf(d + b, " ");
+    b += sprintf(d + b, " ");
+    for (j = i / HexWidth_ * HexWidth_; j != i; ++j)
+    b += sprintf(d + b, "%c", _MSHexChar(data[j]));
+
+    // lprintf("%s", d);
+    MyWrite((unsigned char *)d, strlen(d), "x", tid);
+    b = 0;
+    d[0] = '\0';
+  }
+}
+
+void PrintHex(const void *vdata, size_t size, const char *mark, int tid)
+{
+  return PrintHexEx(vdata, size, 1, mark, tid);
+}
+
+void DumpHex(const void *vdata, size_t size, int tid)
+{
+  char name[100];
+  sprintf(name, "%p", vdata);
+  PrintHex(vdata, size, name, tid);
+}
+
+
+void MyWrite(unsigned char *pdata, int nlen, const char *pflag, int tid) {
+
+  /*
+  ST_PACK pack;
+  int totalLen = sizeof(int) + sizeof(tid) + strlen(pflag) + nlen;
+  pack.pOldData = (unsigned char*)malloc(totalLen);
+  pack.mBuffLength = totalLen;
+
+  memcpy(pack.pOldData + 0, &totalLen, sizeof(totalLen));
+  memcpy(pack.pOldData + sizeof(totalLen), &tid, sizeof(tid));
+  memcpy(pack.pOldData + sizeof(totalLen) + sizeof(tid), pflag, strlen(pflag));
+  memcpy(pack.pOldData + sizeof(totalLen) + sizeof(tid) + strlen(pflag), pdata, nlen);
+  */
+
+  //int fd = ASharedMemory_create("test_memory", 1024*1024*200);
+	//void *buffer = (void *) mmap(NULL, 1024*1024*200,PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+  //SelectSendData(g_sock, (char*)pack.pOldData, pack.mBuffLength);
+
+  MyWriteLocal((unsigned char*)pdata, nlen, pflag, tid);
+}
+
+/***sock*/
+
+bool initialize_methodnames() {
+  // Read enable names
+  char bufx[256] = {0};
+  sprintf(bufx, "%s/xx/enable_methodnames.txt", strPath.c_str());
+  int ret = access(bufx,F_OK);
+  if (ret) {
+    return false;
+  }
+
+  FILE *fp = fopen(bufx, "r");
+  if (fp == NULL) {
+      return false;
+  }
+  char buf[256] = { 0 };
+  while (fgets(&buf[0], sizeof(buf), fp) != NULL) {
+      buf[strcspn(buf, "\r\n")] = '\0';
+      std::string* tmp = new std::string(&buf[0]);
+      g_enable_methodnames.push_back(tmp);
+      memset(buf, 0, 256);
+  }
+  fclose(fp);
+  // Read disable names
+  sprintf(bufx, "%s/xx/disable_methodnames.txt", strPath.c_str());
+  fp = fopen(bufx, "r");
+  if (fp == NULL) {
+      return false;
+  }
+
+  memset(buf, 0, 256);
+  while (fgets(&buf[0], sizeof(buf), fp) != NULL) {
+      buf[strcspn(buf, "\r\n")] = '\0';
+      std::string* tmp = new std::string(&buf[0]);
+      g_disable_methodnames.push_back(tmp);
+      memset(buf, 0, 256);
+  }
+  fclose(fp);
+  sprintf(bufx, "%s/xx/enable_recursion.txt", strPath.c_str());
+  fp = fopen(bufx, "r");
+  if (fp == NULL) {
+      return false;
+  }
+
+  memset(buf, 0, 256);
+  while (fgets(&buf[0], sizeof(buf), fp) != NULL) {
+      buf[strcspn(buf, "\r\n")] = '\0';
+      std::string* tmp = new std::string(&buf[0]);
+      g_enable_recursion.push_back(tmp);
+
+      char *ptr;
+      long ret1;
+      ret1 = strtoul(tmp->c_str(), &ptr, 10);
+      g_enable_recursion_num = ret1;
+      memset(buf, 0, 256);
+  }
+  fclose(fp);
+  sprintf(bufx, "%s/xx/enable_args.txt", strPath.c_str());
+  fp = fopen(bufx, "r");
+  if (fp == NULL) {
+      return false;
+  }
+
+  memset(buf, 0, 256);
+  while (fgets(&buf[0], sizeof(buf), fp) != NULL) {
+      buf[strcspn(buf, "\r\n")] = '\0';
+      std::string* tmp = new std::string(&buf[0]);
+      g_enable_args.push_back(tmp);
+      memset(buf, 0, 256);
+  }
+  fclose(fp);
+  sprintf(bufx, "%s/xx/enable_stack.txt", strPath.c_str());
+  fp = fopen(bufx, "r");
+  if (fp == NULL) {
+      return false;
+  }
+
+  memset(buf, 0, 256);
+  while (fgets(&buf[0], sizeof(buf), fp) != NULL) {
+      buf[strcspn(buf, "\r\n")] = '\0';
+      std::string* tmp = new std::string(&buf[0]);
+      g_enable_stack.push_back(tmp);
+      memset(buf, 0, 256);
+  }
+  fclose(fp);
+  return true;
+}
+
+bool check_methodname(const std::string &current_methodname) {
+
+  if (g_disable_methodnames.size() != 0) {
+    return true;
+  }
+
+  // Check disable names
+  std::vector<std::string*>::iterator beg = g_disable_methodnames.begin();
+  std::vector<std::string*>::iterator end = g_disable_methodnames.end();
+  while (beg != end) {
+      if (current_methodname.find(**beg) != std::string::npos) {
+          return false;
+      }
+      beg++;
+  }
+  // g_enable_methodnames.size() == 0 return true
+  if (g_enable_methodnames.size() == 0) {
+      return true;
+  }
+  // Check enable names
+  beg = g_enable_methodnames.begin();
+  end = g_enable_methodnames.end();
+  while (beg != end) {
+      if (current_methodname.find(**beg) != std::string::npos) {
+          return true;
+      }
+      beg++;
+  }
+  return false;
+}
+
+void ArtMethod::DefaultInitMonitor()
+{
+  const PointerSize pointer_size = InstructionSetPointerSize(
+    Runtime::Current()->GetInstructionSet());
+  SetIsMonitorInitializedPtrSize(nullptr, pointer_size);
+  SetIsMonitorEnabledPtrSize(nullptr, pointer_size);
+}
+
+pid_t gettid(void) {
+  return syscall(SYS_gettid);
+}
+
+bool isTrace() {
+  return bTrace;
+}
+
+void DumpObject(mirror::Object* obj, std::unordered_set<mirror::Object*> test);
+
+  static void PrettyObjectValue(std::string& os,
+                                ObjPtr<mirror::Class> type,
+                                ObjPtr<mirror::Object> value,
+                                std::unordered_set<mirror::Object*> test)
+      REQUIRES_SHARED(Locks::mutator_lock_) {
+    CHECK(type != nullptr);
+    if (value == nullptr) {
+      os += StringPrintf("null   %s\n", type->PrettyDescriptor().c_str());
+    } else if (type->IsStringClass()) {
+      ObjPtr<mirror::String> string = value->AsString();
+      os += StringPrintf("%p   String: %s\n",
+                         string.Ptr(),
+                         PrintableString(string->ToModifiedUtf8().c_str()).c_str());
+    } else if (type->IsClassClass()) {
+      ObjPtr<mirror::Class> klass = value->AsClass();
+      os += StringPrintf("%p   Class: %s\n",
+                         klass.Ptr(),
+                         mirror::Class::PrettyDescriptor(klass).c_str());
+    } else {
+      os += StringPrintf("%p   %s\n", value.Ptr(), type->PrettyDescriptor().c_str());
+
+      if (value.Ptr() != nullptr && value.IsValid()) {
+        if (value.Ptr()->IsByteArray()) {
+            ObjPtr<mirror::ByteArray> pAry = value.Ptr()->AsByteArray();
+            void *ptmp = pAry->GetRawData(sizeof(char), 0);
+            int32_t nlen = pAry->GetLength();
+            if (nlen > OUT_LENGTH) {
+              nlen = OUT_LENGTH;
+            }
+            MyWrite((unsigned char*)ptmp, nlen, "[*[B]]:\n", gettid());
+            return;
+        } else if (value.Ptr()->IsCharArray()) {
+            ObjPtr<mirror::CharArray> pAry = value.Ptr()->AsCharArray();
+            void *ptmp = pAry->GetRawData(sizeof(char), 0);
+            int32_t nlen = pAry->GetLength();
+            MyWrite((unsigned char*)ptmp, nlen, "[*[C]]:\n", gettid());
+            return;
+        } 
+      }
+
+      if (g_enable_recursion.size()) {
+        if ((type->PrettyDescriptor().find("android.") == std::string::npos && 
+          type->PrettyDescriptor().find("androidx.") == std::string::npos) ||
+          type->PrettyDescriptor().find("java.util.List") != std::string::npos) {
+          if (value.Ptr() != nullptr && value.IsValid()) {
+            if (test.size() < g_enable_recursion_num && test.find(value.Ptr()) == test.end()) {
+              DumpObject(value.Ptr(), test);
+            } else {
+              test.clear();
+            }
+          }
+        }
+      }
+    }
+  }
+
+  static void PrintField(std::string& os, ArtField* field, ObjPtr<mirror::Object> obj, std::unordered_set<mirror::Object*> test)
+      REQUIRES_SHARED(Locks::mutator_lock_) {
+    os += StringPrintf("%s: ", field->GetName());
+    switch (field->GetTypeAsPrimitiveType()) {
+      case Primitive::kPrimLong:
+        os += StringPrintf("%" PRId64 " (0x%" PRIx64 ")\n", field->Get64(obj), field->Get64(obj));
+        break;
+      case Primitive::kPrimDouble:
+        os += StringPrintf("%f (%a)\n", field->GetDouble(obj), field->GetDouble(obj));
+        break;
+      case Primitive::kPrimFloat:
+        os += StringPrintf("%f (%a)\n", field->GetFloat(obj), field->GetFloat(obj));
+        break;
+      case Primitive::kPrimInt:
+        os += StringPrintf("%d (0x%x)\n", field->Get32(obj), field->Get32(obj));
+        break;
+      case Primitive::kPrimChar:
+        os += StringPrintf("%u (0x%x)\n", field->GetChar(obj), field->GetChar(obj));
+        break;
+      case Primitive::kPrimShort:
+        os += StringPrintf("%d (0x%x)\n", field->GetShort(obj), field->GetShort(obj));
+        break;
+      case Primitive::kPrimBoolean:
+        os += StringPrintf("%s (0x%x)\n", field->GetBoolean(obj) ? "true" : "false",
+            field->GetBoolean(obj));
+        break;
+      case Primitive::kPrimByte:
+        os += StringPrintf("%d (0x%x)\n", field->GetByte(obj), field->GetByte(obj));
+        break;
+      case Primitive::kPrimNot: {
+        // Get the value, don't compute the type unless it is non-null as we don't want
+        // to cause class loading.
+        ObjPtr<mirror::Object> value = field->GetObj(obj);
+        if (value == nullptr) {
+          os += StringPrintf("null   %s\n", PrettyDescriptor(field->GetTypeDescriptor()).c_str());
+        } else {
+          // Grab the field type without causing resolution.
+          ObjPtr<mirror::Class> field_type = field->LookupResolvedType();
+          if (field_type != nullptr) {
+            PrettyObjectValue(os, field_type, value, test);
+          } else {
+            os += StringPrintf("%p   %s\n",
+                               value.Ptr(),
+                               PrettyDescriptor(field->GetTypeDescriptor()).c_str());
+          }
+        }
+        break;
+      }
+      default:
+        os += "unexpected field type: ";
+        os += field->GetTypeDescriptor();
+        os += "\n";
+        break;
+    }
+  }
+
+  static void DumpFields(std::string& os, mirror::Object* obj, ObjPtr<mirror::Class> klass, std::unordered_set<mirror::Object*> test)
+      REQUIRES_SHARED(Locks::mutator_lock_) {
+    
+    ObjPtr<mirror::Class> super = klass->GetSuperClass();
+    if (super != nullptr) {
+      DumpFields(os, obj, super, test);
+    }
+
+    for (ArtField& field : klass->GetIFields()) {
+      PrintField(os, &field, obj, test);
+    }
+  }
+
+void DumpObject(mirror::Object* obj, std::unordered_set<mirror::Object*> test) REQUIRES_SHARED(Locks::mutator_lock_) {
+
+    std::string os;
+
+    test.insert(obj);
+
+    ObjPtr<mirror::Class> obj_class = obj->GetClass();
+    if (obj_class->IsArrayClass()) {
+      os += StringPrintf("%p: %s length:%d\n", obj, obj_class->PrettyDescriptor().c_str(),
+                         obj->AsArray()->GetLength());
+    } else if (obj->IsClass()) {
+      ObjPtr<mirror::Class> klass = obj->AsClass();
+      os += StringPrintf("%p: java.lang.Class \"%s\" (",
+                         obj,
+                         mirror::Class::PrettyDescriptor(klass).c_str());
+      os += ")\n";
+    } else if (obj_class->IsStringClass()) {
+      os += StringPrintf("%p: java.lang.String %s\n",
+                         obj,
+                         PrintableString(obj->AsString()->ToModifiedUtf8().c_str()).c_str());
+    } else {
+      os += StringPrintf("%p: %s\n", obj, obj_class->PrettyDescriptor().c_str());
+    }
+
+    DumpFields(os, obj, obj_class, test);
+
+    if (obj->IsObjectArray()) {
+      ObjPtr<mirror::ObjectArray<mirror::Object>> obj_array = obj->AsObjectArray<mirror::Object>();
+      for (int32_t i = 0, length = obj_array->GetLength(); i < length; i++) {
+        ObjPtr<mirror::Object> value = obj_array->Get(i);
+        size_t run = 0;
+        for (int32_t j = i + 1; j < length; j++) {
+          if (value == obj_array->Get(j)) {
+            run++;
+          } else {
+            break;
+          }
+        }
+        if (run == 0) {
+          os += StringPrintf("%d: ", i);
+        } else {
+          os += StringPrintf("%d to %zd: ", i, i + run);
+          i = i + run;
+        }
+        ObjPtr<mirror::Class> value_class =
+            (value == nullptr) ? obj_class->GetComponentType() : value->GetClass();
+        PrettyObjectValue(os, value_class, value, test);
+      }
+    } else if (obj->IsClass()) {
+      ObjPtr<mirror::Class> klass = obj->AsClass();
+
+      if (klass->NumStaticFields() != 0) {
+        os += "STATICS:\n";
+        for (ArtField& field : klass->GetSFields()) {
+          PrintField(os, &field, field.GetDeclaringClass(), test);
+        }
+      }
+    }
+
+    
+    MyWrite((unsigned char*)os.c_str(), os.length(), "[**************************************************]\n", gettid());
+}
+
+void artMethodEntered_ARM32(ArtMethod *method, Thread *self /*ATTRIBUTE_UNUSED*/, void *sp)
+{
+  if (!bTrace)
+  {
+    std::string pkg = Runtime::Current()->GetProcessPackageName();
+    if (pkg == strPackageName)
+    {
+      if (initialize_methodnames()) {
+        bTrace = true;    
+      }
+    }
+  }
+
+  if (bTrace)
+  {
+    if (method->GetIsMonitorInitialized() == nullptr)
+    {
+      if (check_methodname(method->PrettyMethod(true)))
+      {
+        method->SetIsMonitorEnabled((const void *)1);
+      }
+      method->SetIsMonitorInitialized((const void *)1);
+    }
+
+    if (method->GetIsMonitorEnabled() != nullptr)
+    {
+      ArtMethod* caller = reinterpret_cast<ArtMethod*>(*(uint32_t*)((char*)sp + 0xb4));
+      
+      std::string output;
+      if (caller) {
+        output += caller->PrettyMethod(true) + " ==> ";
+        output += method->PrettyMethod(true);
+        MyWrite((unsigned char*)output.c_str(), output.size(), "[C]:", gettid());
+      } 
+      
+      if (g_enable_stack.size()) {
+          std::string output1;
+          std::ostringstream oss;
+          self->DumpJavaStack(oss);
+          output1 += oss.str() + "\n";
+          MyWrite((unsigned char*)output1.c_str(), output1.size(), "[SS]:", gettid());
+      }
+
+      if (g_enable_args.size() == 0) {
+        return;
+      }
+
+      /*      
+      char buf[100] = {0};
+      sprintf(buf, "%p %p %p", method, self, method->GetEntryPointFromQuickCompiledCode());
+      DumpHex((unsigned char*)buf, strlen(buf), gettid());
+      DumpHex((unsigned char*)sp, 0x200, gettid());
+      */
+
+      bool is_static = method->IsStatic();
+      bool is_synchronized = method->IsSynchronized();
+      const char* shorty = method->GetShorty();
+
+      MallocArenaPool pool;
+      ArenaAllocator allocator(&pool);
+
+      std::unique_ptr<ManagedRuntimeCallingConvention> mr_conv(
+        ManagedRuntimeCallingConvention::Create(&allocator, is_static, is_synchronized, shorty, (art::InstructionSet)1));
+
+      mr_conv->ResetIterator(FrameOffset(0));
+      
+      uint32_t gpr_index = 1;  // R0 ~ R3. Reserve r0 for ArtMethod*.
+      uint32_t fpr_index = 0;  // S0 ~ S15.
+      uint32_t fpr_double_index = 0;  // D0 ~ D7.
+      uint32_t args_count = 0;
+
+      while (mr_conv->HasNext()) {
+        args_count++;
+
+        FrameOffset offset = mr_conv->CurrentParamStackOffset();
+        int32_t off = offset.Int32Value();
+        uint32_t size = mr_conv->CurrentParamSize();
+
+        if (mr_conv->IsCurrentParamAFloatOrDouble()) {
+          if (mr_conv->IsCurrentParamADouble()) {  // Double. D0, D1, D2, D3, D4, D5, D6, D7
+            // Double should not overlap with float.
+            fpr_double_index = (std::max(fpr_double_index * 2, RoundUp(fpr_index, 2))) / 2;
+            uint64_t doubleValue = 0;
+            if (fpr_double_index < 8) {
+              *((uint32_t*)&doubleValue) = *(uint32_t*)((char*)sp + fpr_double_index * 8);
+              *((uint32_t*)&doubleValue + 1) = *(uint32_t*)((char*)sp + fpr_double_index * 8 + 4);
+              fpr_double_index++;
+            } else {
+              *((uint32_t*)&doubleValue) = *(uint32_t*)((char*)sp + off);
+              *((uint32_t*)&doubleValue + 1) = *(uint32_t*)((char*)sp + off + 4);
+            }
+
+            char bufx[100] = {0};
+            sprintf(bufx, "arg = %02d off = %d size = %d doubleValue = %x-%x", args_count, off, size, *((uint32_t*)&doubleValue + 1), *((uint32_t*)&doubleValue));
+            MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+          } else {  // Float. S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15
+            // Float should not overlap with double.
+            uint32_t floatValue = 0;
+            if (fpr_index % 2 == 0) {
+              fpr_index = std::max(fpr_double_index * 2, fpr_index);
+            }
+            if (fpr_index < 16) {
+              floatValue = *(uint32_t*)((char*)sp + fpr_index * 4);
+              fpr_index++;
+            } else {
+              floatValue = *(uint32_t*)((char*)sp + off);
+            }
+
+            char bufx[100] = {0};
+            sprintf(bufx, "arg = %02d off = %d size = %d floatvalue = %x", args_count, off, size, floatValue);
+            MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+          }
+        } else {
+          // FIXME: Pointer this returns as both reference and long. R0, R1, R2, R3
+          uint64_t longValue = 0;
+          uint32_t refValue = 0;
+          uint32_t otherValue = 0;
+
+          if (mr_conv->IsCurrentParamALong() && !mr_conv->IsCurrentParamAReference()) {  // Long.
+            if (gpr_index < 3) {
+              // Skip R1, and use R2_R3 if the long is the first parameter.
+              if (gpr_index == 1) {
+                gpr_index++;
+              }
+            }
+
+            // If it spans register and memory, we must use the value in memory.
+            if (gpr_index < 3) {
+              *((uint32_t*)&longValue) = *(uint32_t*)((char*)sp + 0x80 + gpr_index * 4);
+              gpr_index++;
+            } else if (gpr_index == 3) {
+              gpr_index++;
+              *((uint32_t*)&longValue) = *(uint32_t*)((char*)sp + 0xb4 + off);
+            } else {
+              *((uint32_t*)&longValue) = *(uint32_t*)((char*)sp + 0xb4 + off);
+            }
+          }
+          // High part of long or 32-bit argument.
+          if (gpr_index < 4) {
+            if (mr_conv->IsCurrentParamALong()) {
+              *((uint32_t*)&longValue + 1) = *(uint32_t*)((char*)sp + 0x80 + gpr_index * 4);
+            } else if (mr_conv->IsCurrentParamAReference()) {
+              refValue = *(uint32_t*)((char*)sp + 0x80 + gpr_index * 4);
+            } else {
+              otherValue = *(uint32_t*)((char*)sp + 0x80 + gpr_index * 4);
+            }
+            
+            gpr_index++;
+          } else {
+            if (mr_conv->IsCurrentParamALong()) {
+              *((uint32_t*)&longValue + 1) = *(uint32_t*)((char*)sp + 0xb4 + off + 4);
+            } else if (mr_conv->IsCurrentParamAReference()) {
+              refValue = *(uint32_t*)((char*)sp + 0xb4 + off);
+            } else {
+              otherValue = *(uint32_t*)((char*)sp + 0xb4 + off);
+            }
+          }
+
+          if (mr_conv->IsCurrentParamALong()) {
+              char bufx[100] = {0};
+              sprintf(bufx, "arg = %02d off = %d size = %d longValue = %x-%x", args_count, off, size, *((uint32_t*)&longValue + 1), *((uint32_t*)&longValue));
+              MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+            } else if (mr_conv->IsCurrentParamAReference()) {
+              char bufx[100] = {0};
+              sprintf(bufx, "arg = %02d off = %d size = %d refValue = %x", args_count, off, size, refValue);
+              MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+
+              mirror::Object* o = reinterpret_cast<mirror::Object*>(refValue);
+              if (o != nullptr) {
+                  if (o->IsString()) {
+                      ObjPtr<mirror::String> tmp = o->AsString();
+                      std::string str = tmp->ToModifiedUtf8();
+                      std::string s = "String:" + str;
+                      int32_t nlen = s.length();
+                      if (nlen > OUT_LENGTH) {
+                        nlen = OUT_LENGTH;
+                      }
+                      MyWrite((unsigned char*)s.c_str(), nlen, "[**S]:\n", gettid());
+                  } else if (o->IsByteArray()) {
+                      ObjPtr<mirror::ByteArray> pAry = o->AsByteArray();
+                      void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                      int32_t nlen = pAry->GetLength();
+                      if (nlen > OUT_LENGTH) {
+                        nlen = OUT_LENGTH;
+                      }
+                      MyWrite((unsigned char*)ptmp, nlen, "[*[B]]:\n", gettid());
+                  } else if (o->IsCharArray()) {
+                      ObjPtr<mirror::CharArray> pAry = o->AsCharArray();
+                      void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                      int32_t nlen = pAry->GetLength();
+                      if (nlen > OUT_LENGTH) {
+                        nlen = OUT_LENGTH;
+                      }
+                      MyWrite((unsigned char*)ptmp, nlen, "[*[C]]:\n", gettid());
+                  } else {
+                      std::unordered_set<mirror::Object*> test;
+                      DumpObject(o, test);
+                  }
+              }
+            } else {
+              char bufx[100] = {0};
+              sprintf(bufx, "arg = %02d off = %d size = %d otherValue = %x", args_count, off, size, otherValue);
+              MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+            }          
+        }
+
+        mr_conv->Next();
+      }
+    }
+  }
+}
+
+void PrintMirrorObj1(art::mirror::Object* o) REQUIRES_SHARED(Locks::mutator_lock_) {
+    if (o != nullptr) {
+          ObjPtr<mirror::Class> obj_class = o->GetClass();
+          if (obj_class != nullptr) {
+                if (o->IsString()) {
+                ObjPtr<mirror::String> tmp = o->AsString();
+                if (tmp != nullptr) {
+                  std::string str = tmp->ToModifiedUtf8();
+                  std::string s = "String:" + str;
+                  int32_t nlen = s.length();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)s.c_str(), nlen, "[**S]:\n", gettid());
+                }
+            } else if (o->IsByteArray()) {
+                ObjPtr<mirror::ByteArray> pAry = o->AsByteArray();
+                if (pAry != nullptr) {
+                  void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                  int32_t nlen = pAry->GetLength();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)ptmp, nlen, "[*[B]]:\n", gettid());
+                }
+            } else if (o->IsCharArray()) {
+                ObjPtr<mirror::CharArray> pAry = o->AsCharArray();
+                if (pAry != nullptr) {
+                  void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                  int32_t nlen = pAry->GetLength();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)ptmp, nlen, "[*[C]]:\n", gettid());
+                }
+            } else {
+                std::unordered_set<mirror::Object*> test;
+                DumpObject(o, test);
+            }
+          }
+      }
+}
+
+void PrintMirrorObj2(art::mirror::Object* o) REQUIRES_SHARED(Locks::mutator_lock_) {
+    if (o != nullptr) {
+          ObjPtr<mirror::Class> obj_class = o->GetClass();
+          if (obj_class != nullptr) {
+                if (o->IsString()) {
+                ObjPtr<mirror::String> tmp = o->AsString();
+                if (tmp != nullptr) {
+                  std::string str = tmp->ToModifiedUtf8();
+                  std::string s = "String:" + str;
+                  int32_t nlen = s.length();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)s.c_str(), nlen, "[**S]:\n", gettid());
+                }
+            } else if (o->IsByteArray()) {
+                ObjPtr<mirror::ByteArray> pAry = o->AsByteArray();
+                if (pAry != nullptr) {
+                  void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                  int32_t nlen = pAry->GetLength();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)ptmp, nlen, "[*[B]]:\n", gettid());
+                }
+            } else if (o->IsCharArray()) {
+                ObjPtr<mirror::CharArray> pAry = o->AsCharArray();
+                if (pAry != nullptr) {
+                  void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                  int32_t nlen = pAry->GetLength();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)ptmp, nlen, "[*[C]]:\n", gettid());
+                }
+            } else {
+                std::unordered_set<mirror::Object*> test;
+                DumpObject(o, test);
+            }
+          }
+      }
+}
+
+void PrintMirrorObj3(art::mirror::Object* o) REQUIRES_SHARED(Locks::mutator_lock_) {
+    if (o != nullptr) {
+          ObjPtr<mirror::Class> obj_class = o->GetClass();
+          if (obj_class != nullptr) {
+                if (o->IsString()) {
+                ObjPtr<mirror::String> tmp = o->AsString();
+                if (tmp != nullptr) {
+                  std::string str = tmp->ToModifiedUtf8();
+                  std::string s = "String:" + str;
+                  int32_t nlen = s.length();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)s.c_str(), nlen, "[**S]:\n", gettid());
+                }
+            } else if (o->IsByteArray()) {
+                ObjPtr<mirror::ByteArray> pAry = o->AsByteArray();
+                if (pAry != nullptr) {
+                  void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                  int32_t nlen = pAry->GetLength();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)ptmp, nlen, "[*[B]]:\n", gettid());
+                }
+            } else if (o->IsCharArray()) {
+                ObjPtr<mirror::CharArray> pAry = o->AsCharArray();
+                if (pAry != nullptr) {
+                  void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                  int32_t nlen = pAry->GetLength();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)ptmp, nlen, "[*[C]]:\n", gettid());
+                }
+            } else {
+                std::unordered_set<mirror::Object*> test;
+                DumpObject(o, test);
+            }
+          }
+      }
+}
+
+void PrintMirrorObj4(art::mirror::Object* o) REQUIRES_SHARED(Locks::mutator_lock_) {
+    if (o != nullptr) {
+          ObjPtr<mirror::Class> obj_class = o->GetClass();
+          if (obj_class != nullptr) {
+                if (o->IsString()) {
+                ObjPtr<mirror::String> tmp = o->AsString();
+                if (tmp != nullptr) {
+                  std::string str = tmp->ToModifiedUtf8();
+                  std::string s = "String:" + str;
+                  int32_t nlen = s.length();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)s.c_str(), nlen, "[**S]:\n", gettid());
+                }
+            } else if (o->IsByteArray()) {
+                ObjPtr<mirror::ByteArray> pAry = o->AsByteArray();
+                if (pAry != nullptr) {
+                  void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                  int32_t nlen = pAry->GetLength();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)ptmp, nlen, "[*[B]]:\n", gettid());
+                }
+            } else if (o->IsCharArray()) {
+                ObjPtr<mirror::CharArray> pAry = o->AsCharArray();
+                if (pAry != nullptr) {
+                  void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                  int32_t nlen = pAry->GetLength();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)ptmp, nlen, "[*[C]]:\n", gettid());
+                }
+            } else {
+                std::unordered_set<mirror::Object*> test;
+                DumpObject(o, test);
+            }
+          }
+      }
+}
+
+void PrintMirrorObj5(art::mirror::Object* o) REQUIRES_SHARED(Locks::mutator_lock_) {
+    if (o != nullptr) {
+          ObjPtr<mirror::Class> obj_class = o->GetClass();
+          if (obj_class != nullptr) {
+                if (o->IsString()) {
+                ObjPtr<mirror::String> tmp = o->AsString();
+                if (tmp != nullptr) {
+                  std::string str = tmp->ToModifiedUtf8();
+                  std::string s = "String:" + str;
+                  int32_t nlen = s.length();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)s.c_str(), nlen, "[**S]:\n", gettid());
+                }
+            } else if (o->IsByteArray()) {
+                ObjPtr<mirror::ByteArray> pAry = o->AsByteArray();
+                if (pAry != nullptr) {
+                  void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                  int32_t nlen = pAry->GetLength();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)ptmp, nlen, "[*[B]]:\n", gettid());
+                }
+            } else if (o->IsCharArray()) {
+                ObjPtr<mirror::CharArray> pAry = o->AsCharArray();
+                if (pAry != nullptr) {
+                  void *ptmp = pAry->GetRawData(sizeof(char), 0);
+                  int32_t nlen = pAry->GetLength();
+                  if (nlen > OUT_LENGTH) {
+                    nlen = OUT_LENGTH;
+                  }
+                  MyWrite((unsigned char*)ptmp, nlen, "[*[C]]:\n", gettid());
+                }
+            } else {
+                std::unordered_set<mirror::Object*> test;
+                DumpObject(o, test);
+            }
+          }
+      }
+}
+
+void artMethodEntered_ARM64(ArtMethod *method,
+						  Thread *self,
+						  void *sp) {
+  if (!bTrace)
+  {
+    std::string pkg = Runtime::Current()->GetProcessPackageName();
+    if (pkg == strPackageName)
+    {
+      if (initialize_methodnames()) {
+        bTrace = true;    
+      }
+    }
+  }
+
+  if (bTrace)
+  {
+    if (method->GetIsMonitorInitialized() == nullptr)
+    {
+      if (check_methodname(method->PrettyMethod(true)))
+      {
+        method->SetIsMonitorEnabled((const void *)1);
+      }
+      method->SetIsMonitorInitialized((const void *)1);
+    }
+
+    ArtMethod* caller = reinterpret_cast<ArtMethod*>(*(uint64_t*)((char*)sp + 0x1F0)); //x0-x30 d0-d30 offset
+    /*
+    ArtMethod* caller1 = NULL;
+    if (caller == NULL) {
+      for (int i = 0x10; i < 0x100; i += 0x10) {
+        uint64_t x30 = *(uint64_t*)((char*)sp + 0x1F0 + i + 0x28);
+        if ((x30 & 0x7EC) ==  0x7EC || (x30 & 0x808) == 0x808) {
+          //DumpHex((unsigned char*)((char*)sp + 0x1F0), 0x60, gettid());
+          ArtMethod* result1 = (ArtMethod*)*(uint64_t*)((char*)sp + 0x1F0 + i);
+          if (((uint64_t)result1 - (uint64_t)sp) < 0x10000 && ((uint64_t)result1 - (uint64_t)sp) > 0) {
+            caller1 = (ArtMethod*)*(uint64_t*)(result1);
+          }
+          
+          break;
+        }
+      }
+    }
+    */
+
+    if (method->GetIsMonitorEnabled() != nullptr || (caller != NULL && caller->GetIsMonitorEnabled() != nullptr) /* || \
+      (caller1 != NULL && caller1->GetIsMonitorEnabled() != nullptr) */)
+    {
+      std::string output;
+      if (caller) {
+        output += caller->PrettyMethod(true) + " ==> ";
+        output += method->PrettyMethod(true);
+        MyWrite((unsigned char*)output.c_str(), output.size(), "[CC]:", gettid());
+      }
+      else {
+        output += method->PrettyMethod(true);
+        MyWrite((unsigned char*)output.c_str(), output.size(), "[CCN]:", gettid());
+        return;
+
+        /*
+        const ManagedStack* current_fragment = self->GetManagedStack();
+        if (current_fragment != NULL) {
+          if (current_fragment->GetTopQuickFrameGenericJniTag()) { //sp  | 1
+            std::string output1;
+            std::ostringstream oss;
+            self->Dump(oss, false, false);
+            output1 += oss.str() + "\n";
+            MyWrite((unsigned char*)output1.c_str(), output1.size(), "[CCNSS]:", gettid());
+          }
+          else {
+            MyWrite((unsigned char*)output.c_str(), output.size(), "[CCNx]:", gettid());
+          }
+        }
+        */
+      }
+
+      /*
+      if (caller1) 
+      {
+        output += caller1->PrettyMethod(true) + " ==> ";
+        output += method->PrettyMethod(true);
+        MyWrite((unsigned char*)output.c_str(), output.size(), "[IC]:", gettid());
+      } 
+      */
+
+      if (g_enable_stack.size()) {
+          if (self->HasManagedStack()) {
+            std::string output1;
+            std::ostringstream oss;
+            self->Dump(oss, false, false);
+            output1 += oss.str() + "\n";
+            MyWrite((unsigned char*)output1.c_str(), output1.size(), "[SS]:", gettid());
+          }
+      }
+
+      /*
+      char buf[100] = {0};
+      sprintf(buf, "%p %p %p", method, self, method->GetEntryPointFromQuickCompiledCode());
+      DumpHex((unsigned char*)buf, strlen(buf), gettid());
+      DumpHex((unsigned char*)sp, 0x400, gettid());
+      */
+
+      if (g_enable_args.size() == 0) {
+        return;
+      }
+
+
+      bool is_static = method->IsStatic();
+      bool is_synchronized = method->IsSynchronized();
+      const char* shorty = method->GetShorty();
+
+      MallocArenaPool pool;
+      ArenaAllocator allocator(&pool);
+
+      std::unique_ptr<ManagedRuntimeCallingConvention> mr_conv(
+        ManagedRuntimeCallingConvention::Create(&allocator, is_static, is_synchronized, shorty, (art::InstructionSet)2));
+
+      int gp_reg_index = 1;   // we start from X1/W1, X0 holds ArtMethod*.
+      int fp_reg_index = 0;   // D0/S0.
+      uint32_t args_count = 0;
+
+      // We need to choose the correct register (D/S or X/W) since the managed
+      // stack uses 32bit stack slots.
+      mr_conv->ResetIterator(FrameOffset(0));
+      while (mr_conv->HasNext()) {
+
+        args_count++;
+
+        FrameOffset offset = mr_conv->CurrentParamStackOffset();
+        int32_t off = offset.Int32Value();
+        uint32_t size = mr_conv->CurrentParamSize();
+
+        char bufx[512] = {0};
+        if (mr_conv->IsCurrentParamAFloatOrDouble()) {  // FP regs.
+            double doubleValue;
+            float floatValue;
+            if (fp_reg_index < 8) {
+              if (!mr_conv->IsCurrentParamADouble()) {
+                *((float*)&floatValue) = *(float*)((char*)sp + 0x1F0 + off);
+                sprintf(bufx, "arg = %02d off = %d size = %d floatValue = %f", args_count, off, size, floatValue);
+              } else {
+                *((double*)&doubleValue) = *(double*)((char*)sp + 0x1F0 + off);
+                sprintf(bufx, "arg = %02d off = %d size = %d doubleValue = %lf", args_count, off, size, doubleValue);
+              }
+              fp_reg_index++;
+            } else {  // just increase the stack offset.
+              if (!mr_conv->IsCurrentParamADouble()) {
+                *((float*)&floatValue) = *(float*)((char*)sp + 0x1F0 + off);
+                sprintf(bufx, "arg = %02d off = %d size = %d floatValue = %f", args_count, off, size, floatValue);
+              } else {
+                *((double*)&doubleValue) = *(double*)((char*)sp + 0x1F0 + off);
+                sprintf(bufx, "arg = %02d off = %d size = %d doubleValue = %lf", args_count, off, size, doubleValue);
+              }
+            }
+            MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+        } else {  // GP regs.
+          uint32_t refValue;
+          uint64_t longValue;
+          if (gp_reg_index < 8) {
+            if (mr_conv->IsCurrentParamALong() && (!mr_conv->IsCurrentParamAReference())) {
+              *((uint64_t*)&longValue) = *(uint64_t*)((char*)sp + gp_reg_index*8);
+              sprintf(bufx, "arg = %02d off = %d size = %d doubleValue = %lf", args_count, off, size, (double)longValue);
+              MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+            } else {
+              *((uint32_t*)&refValue) = *(uint32_t*)((char*)sp + gp_reg_index*8);
+              sprintf(bufx, "arg = %02d off = %d size = %d refValue = %08x", args_count, off, size, refValue);
+              MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+              if (mr_conv->IsCurrentParamAReference()) {
+                mirror::Object* o = reinterpret_cast<mirror::Object*>(refValue);
+                PrintMirrorObj1(o);
+              }
+            }
+            gp_reg_index++;
+          } else {  // just increase the stack offset.
+            if (mr_conv->IsCurrentParamALong() && (!mr_conv->IsCurrentParamAReference())) {
+                *((uint64_t*)&longValue) = *(uint64_t*)((char*)sp + 0x1F0 + off);
+                sprintf(bufx, "arg = %02d off = %d size = %d doubleValue = %lf", args_count, off, size, (double)longValue);
+                MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+            } else {
+                *((uint32_t*)&refValue) = *(uint32_t*)((char*)sp + 0x1F0 + off);
+                sprintf(bufx, "arg = %02d off = %d size = %d refValue = %08x", args_count, off, size, refValue);
+                MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+                if (mr_conv->IsCurrentParamAReference()) {
+                  mirror::Object* o = reinterpret_cast<mirror::Object*>(refValue);
+                  PrintMirrorObj2(o);
+                  }
+                }
+            }
+          }
+
+        mr_conv->Next();
+      }
+    }
+  }
+}
+
+
+void TestJniArg(ArtMethod *method, [[maybe_unused]] Thread *self, [[maybe_unused]] void *sp) REQUIRES_SHARED(Locks::mutator_lock_) {
+
+  bool is_static = method->IsStatic();
+  bool is_synchronized = method->IsSynchronized();
+  //bool is_fast_native = method->IsFastNative();
+  //bool is_critical_native = method->IsCriticalNative();
+  const char* shorty = method->GetShorty();
+
+
+  MallocArenaPool pool;
+  ArenaAllocator allocator(&pool);
+
+  //std::unique_ptr<JniCallingConvention> mr_jni_conv(
+  //JniCallingConvention::Create(&allocator, is_static, is_synchronized, is_fast_native, is_critical_native, shorty, (art::InstructionSet)2));
+
+  std::unique_ptr<ManagedRuntimeCallingConvention> mr_conv(
+  ManagedRuntimeCallingConvention::Create(&allocator, is_static, is_synchronized, shorty, (art::InstructionSet)2));
+
+
+  uint32_t args_count = 0;
+  mr_conv->ResetIterator(FrameOffset(0));
+  while (mr_conv->HasNext()) {
+
+    args_count++;
+
+    FrameOffset offset = mr_conv->CurrentParamStackOffset();
+    int32_t off = offset.Int32Value();
+    uint32_t size = mr_conv->CurrentParamSize();
+
+    char bufx[512] = {0};
+    if (mr_conv->IsCurrentParamAFloatOrDouble()) {  // FP regs.
+        double doubleValue;
+        float floatValue;
+        // just increase the stack offset.
+        if (!mr_conv->IsCurrentParamADouble()) {
+          *((float*)&floatValue) = *(float*)((char*)sp + 0xE0 + off);
+          sprintf(bufx, "arg = %02d off = %d size = %d floatValue = %f", args_count, off, size, floatValue);
+        } else {
+          *((double*)&doubleValue) = *(double*)((char*)sp + 0xE0 + off);
+          sprintf(bufx, "arg = %02d off = %d size = %d doubleValue = %lf", args_count, off, size, doubleValue);
+        }
+        MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+    } else {  // just increase the stack offset.
+      uint32_t refValue;
+      uint64_t longValue;
+      if (mr_conv->IsCurrentParamALong() && (!mr_conv->IsCurrentParamAReference())) {
+          *((uint64_t*)&longValue) = *(uint64_t*)((char*)sp + 0xE0 + off);
+          sprintf(bufx, "arg = %02d off = %d size = %d doubleValue = %lf", args_count, off, size, (double)longValue);
+          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+      } else {
+          *((uint32_t*)&refValue) = *(uint32_t*)((char*)sp + 0xE0 + off);
+          sprintf(bufx, "arg = %02d off = %d size = %d refValue = %08x", args_count, off, size, refValue);
+          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+          if (mr_conv->IsCurrentParamAReference()) {
+            mirror::Object* o = reinterpret_cast<mirror::Object*>(refValue);
+            PrintMirrorObj3(o);
+          }
+      }
+    }
+
+    mr_conv->Next();
+  }
+}
+
+bool IsNeedTrace(ArtMethod *method) REQUIRES_SHARED(Locks::mutator_lock_) {
+  if (!bTrace)
+  {
+    std::string pkg = Runtime::Current()->GetProcessPackageName();
+    if (pkg == strPackageName)
+    {
+      if (initialize_methodnames()) {
+        bTrace = true;    
+      }
+    }
+  }
+
+  if (bTrace)
+  {
+    if (method->GetIsMonitorInitialized() == nullptr)
+    {
+      if (check_methodname(method->PrettyMethod(true)))
+      {
+        method->SetIsMonitorEnabled((const void *)1);
+      }
+      method->SetIsMonitorInitialized((const void *)1);
+    }
+
+    if (method->GetIsMonitorEnabled() != nullptr)
+    {
+      return true;
+    } 
+  }
+
+  return false;
+}
+
+bool artMethodEntered_INTERPRETER(Thread *self, ShadowFrame &shadow_frame) REQUIRES_SHARED(Locks::mutator_lock_) {
+  if (!bTrace)
+  {
+    std::string pkg = Runtime::Current()->GetProcessPackageName();
+    if (pkg == strPackageName)
+    {
+      if (initialize_methodnames()) {
+        bTrace = true;    
+      }
+    }
+  }
+
+  if (bTrace)
+  {
+    ArtMethod *method = shadow_frame.GetMethod();
+    if (method->GetIsMonitorInitialized() == nullptr)
+    {
+      if (check_methodname(method->PrettyMethod(true)))
+      {
+        method->SetIsMonitorEnabled((const void *)1);
+      }
+      method->SetIsMonitorInitialized((const void *)1);
+    }
+
+    ShadowFrame* linker = shadow_frame.GetLink();
+    ArtMethod* caller = NULL;
+    if (linker) {
+        caller = linker->GetMethod();
+    }
+
+    if (method->GetIsMonitorEnabled() != nullptr || (caller != NULL && caller->GetIsMonitorEnabled() != nullptr))
+    {
+      std::string output;
+
+      if (linker) {
+        output += caller->PrettyMethod(true) + " ==> ";
+      } else {
+        if (!((reinterpret_cast<long>(self) & 1) == 1)) {
+          std::ostringstream oss;
+          self->Dump(oss, false, false);
+          output += oss.str() + "\n";
+        }
+      }
+
+      output += method->PrettyMethod(true);
+
+      if ((reinterpret_cast<long>(self) & 1) == 1) {
+        MyWrite((unsigned char*)output.c_str(), output.size(), "[IC]:", gettid());
+        return true;
+      } else {
+        MyWrite((unsigned char*)output.c_str(), output.size(), "[I]:", gettid());
+        //MyWrite((unsigned char *)&g_enable_recursion_num, sizeof(size_t), "[enable_recursion]", gettid());
+      }
+      
+      if (g_enable_stack.size()) {
+          std::string output1;
+          std::ostringstream oss;
+          self->Dump(oss, false, false);
+          output1 += oss.str() + "\n";
+          MyWrite((unsigned char*)output1.c_str(), output1.size(), "[ISS]:", gettid());
+      }
+
+      if (g_enable_args.size() == 0) {
+        return true;
+      }
+
+      CodeItemDataAccessor accessor(method->DexInstructionData());
+      uint16_t arg_offset = accessor.RegistersSize() - accessor.InsSize();
+      uint32_t* args = shadow_frame.GetVRegArgs(arg_offset);
+      const char *shorty = method->GetShorty();
+      if (args != nullptr && shorty[1] != '\0') {
+          size_t shorty_index = 1;
+          size_t arg_index = method->IsStatic() ? 0 : 1;
+              while (shorty[shorty_index] != '\0') {
+                  switch (shorty[shorty_index]) {
+                      case 'L': {
+                          mirror::Object* o = reinterpret_cast<StackReference<mirror::Object>*>(&args[arg_index])->AsMirrorPtr();
+                          if (o != nullptr) {
+                              PrintMirrorObj4(o);
+                          }
+
+                          /*
+                          if (strstr(method->PrettyMethod(true).c_str(), "void com.pairip.licensecheck.LicenseResponseHelper.validateResponse(android.os.Bundle, java.lang.String)") != NULL) {
+                            return false;
+                          }
+
+                          if (strstr(method->PrettyMethod(true).c_str(), "com.pairip.licensecheck.RepeatedCheckMetadata com.pairip.licensecheck.LicenseResponseHelper.getRepeatedCheckMetadata(android.os.Bundle)") != NULL) {
+                            return false;
+                          }
+                          */
+                          
+                          
+
+                          break;
+                      }
+                      case 'J':
+                      case 'D': {
+                          char bufx[100] = {0};
+                          sprintf(bufx, "arg = %02zu  J = %x-%x %lf", shorty_index, args[arg_index], args[arg_index+1], *(double*)&args);
+                          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+                          /*
+                          if (strstr(output.c_str(), "==> boolean X.UgJ.LJ(double)") != NULL) {
+                            double x = 2.0;
+                            args[arg_index] = *((uint32_t*)&x);
+                            args[arg_index+1] = *((uint32_t*)&x + 1);
+                          }
+                          */
+                          arg_index++;
+                          break;
+                      }
+                      case 'C':
+                      {
+                          char bufx[100] = {0};
+                          sprintf(bufx, "arg = %02zu  C = %x", shorty_index, args[arg_index]);
+                          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+                          break;
+                      }
+                      case 'I':
+                      {
+                          char bufx[100] = {0};
+                          sprintf(bufx, "arg = %02zu  I = %x", shorty_index, args[arg_index]);
+                          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+                          /*
+                          if (strstr(output.c_str(), "==> void com.pairip.licensecheck.LicenseClient.processResponse(int, android.os.Bundle)") != NULL) {
+                            int x = 0;
+                            args[arg_index] = *((uint32_t*)&x); 
+                          }
+                          */
+                          break;
+                      }
+                      case 'F': {
+                          char bufx[100] = {0};
+                          sprintf(bufx, "arg = %02zu  F = %x %f", shorty_index, args[arg_index], *(float*)&args[arg_index]);
+                          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+                          break;
+                      }
+                      default:
+                          char bufx[100] = {0};
+                          sprintf(bufx, "arg = %02zu  Other = %x", shorty_index, args[arg_index]);
+                          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid()); 
+                          break;
+                      }
+
+                      shorty_index++;
+                      arg_index++;
+                  } 
+          }
+    }
+  }
+
+  return true;
+}
+
+void TestArg(ArtMethod* m, uint32_t* args) REQUIRES_SHARED(Locks::mutator_lock_) {
+      const char *shorty = m->GetShorty();
+      if (args != nullptr && shorty[1] != '\0') {
+          size_t shorty_index = 1;
+          size_t arg_index = m->IsStatic() ? 0 : 1;
+              while (shorty[shorty_index] != '\0') {
+                  switch (shorty[shorty_index]) {
+                      case 'L': {
+                          mirror::Object* o = reinterpret_cast<StackReference<mirror::Object>*>(&args[arg_index])->AsMirrorPtr();
+                          if (o != nullptr) {
+                              PrintMirrorObj5(o);
+                          }
+
+                          break;
+                      }
+                      case 'J':
+                      case 'D': {
+                          char bufx[100] = {0};
+                          sprintf(bufx, "arg = %02zu  J = %x-%x %lf", shorty_index, args[arg_index], args[arg_index+1], *(double*)&args);
+                          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+                          arg_index++;
+                          break;
+                      }
+                      case 'C':
+                      {
+                          char bufx[100] = {0};
+                          sprintf(bufx, "arg = %02zu  C = %x", shorty_index, args[arg_index]);
+                          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+                          break;
+                      }
+                      case 'I':
+                      {
+                          char bufx[100] = {0};
+                          sprintf(bufx, "arg = %02zu  I = %x", shorty_index, args[arg_index]);
+                          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+                          break;
+                      }
+                      case 'F': {
+                          char bufx[100] = {0};
+                          sprintf(bufx, "arg = %02zu  F = %x %f", shorty_index, args[arg_index], *(float*)&args[arg_index]);
+                          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid());
+                          break;
+                      }
+                      default:
+                          char bufx[100] = {0};
+                          sprintf(bufx, "arg = %02zu  Other = %x", shorty_index, args[arg_index]);
+                          MyWrite((unsigned char*)bufx, strlen(bufx), "[arg]:", gettid()); 
+                          break;
+                      }
+
+                      shorty_index++;
+                      arg_index++;
+                  } 
+    }
+}
+
+void artMethodEntered_JNI(ArtMethod *method, Thread *self, ArtMethod *caller, void *sp) REQUIRES_SHARED(Locks::mutator_lock_)
+{
+  CHECK(method != nullptr && self != nullptr);
+
+  if (bTrace)
+  {
+    std::string output;
+    if (caller) {
+      output += caller->PrettyMethod(true) + " ==> ";
+    } 
+    output += method->PrettyMethod(true);
+    MyWrite((unsigned char*)output.c_str(), output.size(), "[N]:", gettid());
+
+    if (method->GetIsMonitorInitialized() == nullptr)
+    {
+      if (check_methodname(method->PrettyMethod(true)))
+      {
+        method->SetIsMonitorEnabled((const void *)1);
+      }
+      method->SetIsMonitorInitialized((const void *)1);
+    }
+
+    if (caller != NULL && (caller->GetIsMonitorInitialized() == nullptr))
+    {
+      if (check_methodname(caller->PrettyMethod(true)))
+      {
+        caller->SetIsMonitorEnabled((const void *)1);
+      }
+      caller->SetIsMonitorInitialized((const void *)1);
+    }
+    
+    if (method->GetIsMonitorEnabled() != nullptr || (caller != NULL && caller->GetIsMonitorEnabled() != nullptr)) {
+      TestJniArg(method, self, sp);
+    }
+  }
 }
 
 }  // namespace art

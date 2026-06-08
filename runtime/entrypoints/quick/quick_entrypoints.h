@@ -99,6 +99,12 @@ extern "C" mirror::Object* artReadBarrierSlow(mirror::Object* ref,
 extern "C" mirror::Object* artReadBarrierForRootSlow(GcRoot<mirror::Object>* root)
     REQUIRES_SHARED(Locks::mutator_lock_) HOT_ATTR;
 
+extern "C" void artMethodEntered_ARM32(ArtMethod* method, Thread* self, void* sp)
+    REQUIRES_SHARED(Locks::mutator_lock_);
+
+extern "C" void artMethodEntered_ARM64(ArtMethod* method, Thread* self, void* sp)
+    REQUIRES_SHARED(Locks::mutator_lock_);
+    
 }  // namespace art
 
 #endif  // ART_RUNTIME_ENTRYPOINTS_QUICK_QUICK_ENTRYPOINTS_H_

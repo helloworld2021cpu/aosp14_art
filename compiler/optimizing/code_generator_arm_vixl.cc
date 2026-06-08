@@ -2280,6 +2280,31 @@ void CodeGeneratorARMVIXL::MaybeIncrementHotness(bool is_frame_entry) {
 }
 
 void CodeGeneratorARMVIXL::GenerateFrameEntry() {
+  if (!GetGraph()->IsCompilingOsr()) {
+    uint32_t saved_core_mask = (1u << r0.GetCode())  |
+                               (1u << r1.GetCode())  |
+                               (1u << r2.GetCode())  |
+                               (1u << r3.GetCode())  |
+                               (1u << r4.GetCode())  |
+                               (1u << r5.GetCode())  |
+                               (1u << r6.GetCode())  |
+                               (1u << r7.GetCode())  |
+                               (1u << r8.GetCode())  |
+                               (1u << r9.GetCode())  |
+                               (1u << r10.GetCode()) |
+                               (1u << r11.GetCode()) |
+                               (1u << r14.GetCode());
+    __ Push(RegisterList(saved_core_mask));
+    __ Vpush(SRegisterList(s0, 32));
+    __ Mov(r1, tr);
+    __ Mov(r2, sp);
+    __ Ldr(lr, MemOperand(tr, GetThreadOffset<kArmPointerSize>(
+        kQuickMethodEntered_ARM32).Int32Value()));
+    __ Blx(lr);
+    __ Vpop(SRegisterList(s0, 32));
+    __ Pop(RegisterList(saved_core_mask));
+  }
+
   bool skip_overflow_check =
       IsLeafMethod() && !FrameNeedsStackCheck(GetFrameSize(), InstructionSet::kArm);
   DCHECK(GetCompilerOptions().GetImplicitStackOverflowChecks());
